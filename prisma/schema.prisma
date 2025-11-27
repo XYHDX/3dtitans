@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String?    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          String     @default("user")
+  phoneNumber   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  products          Product[]
+  uploads           Upload[]
+  uploadsAssigned   Upload[]            @relation("UploadAssignedOwner")
+  orders            Order[]             @relation("UserOrders")
+  orderAssignments  OrderAssignment[]   @relation("AssignmentOwner")
+
+  accounts Account[]
+  sessions Session[]
+}
+
+model Product {
+  id           String    @id @default(cuid())
+  name         String
+  category     String
+  price        Decimal
+  description  String?
+  tags         String?
+  imageUrl     String
+  imageHint    String?
+  has3dPreview Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  uploader   User   @relation(fields: [uploaderId], references: [id])
+  uploaderId String
+
+  orderItems OrderItem[]
+}
+
+model Upload {
+  id              String        @id @default(cuid())
+  modelName       String
+  fileName        String
+  fileUrl         String
+  blobPath        String?
+  notes           String?
+  phoneNumber     String
+  status          String        @default("new")
+  assignedAt      DateTime?
+  pooledAt        DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id])
+  userId          String
+  assignedOwner   User?         @relation("UploadAssignedOwner", fields: [assignedOwnerId], references: [id])
+  assignedOwnerId String?
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  status            String        @default("Pending")
+  totalAmount       Decimal
+  shippingName      String
+  shippingAddress1  String
+  shippingCity      String
+  shippingPostalCode String
+  shippingCountry   String
+  phoneNumber       String
+  customerEmail     String?
+  predictedFinishAt DateTime?
+  isPrioritized     Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user   User?   @relation("UserOrders", fields: [userId], references: [id])
+  userId String?
+
+  items        OrderItem[]
+  assignments  OrderAssignment[]
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  name      String
+  quantity  Int
+  price     Decimal
+  imageUrl  String?
+
+  order    Order   @relation(fields: [orderId], references: [id])
+  orderId  String
+
+  product   Product? @relation(fields: [productId], references: [id])
+  productId String?
+}
+
+model OrderAssignment {
+  id         String   @id @default(cuid())
+  claimedAt  DateTime @default(now())
+  releasedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  order    Order  @relation(fields: [orderId], references: [id])
+  orderId  String
+
+  owner    User   @relation("AssignmentOwner", fields: [ownerId], references: [id])
+  ownerId  String
+}
+
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model ContactSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model NewsletterSubscription {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  subscribedAt  DateTime @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

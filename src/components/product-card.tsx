@@ -1,0 +1,77 @@
+'use client';
+
+import type { Product } from '@/lib/types';
+import Image from 'next/image';
+import Link from 'next/link';
+import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
+import { Badge } from './ui/badge';
+import { Star, Box, ShoppingCart } from 'lucide-react';
+import { Button } from './ui/button';
+import { useCart } from '@/hooks/use-cart';
+import { useToast } from '@/hooks/use-toast';
+
+interface ProductCardProps {
+  product: Product;
+}
+
+export function ProductCard({ product }: ProductCardProps) {
+  const rating = product.rating || 4.5;
+  const reviewCount = product.reviewCount || Math.floor(Math.random() * 200) + 1;
+  const { addToCart } = useCart();
+  const { toast } = useToast();
+
+  const handleAddToCart = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    addToCart(product, 1);
+    toast({
+      title: 'Added to Cart',
+      description: `${product.name} has been added to your cart.`,
+    });
+  };
+
+  return (
+    <Card className="overflow-hidden flex flex-col group h-full transition-all hover:shadow-primary/20 hover:shadow-lg hover:-translate-y-1">
+      <CardHeader className="p-0 relative">
+        <Link href={`/products/${product.id}`} className="block aspect-[4/3]">
+          <Image
+            src={product.imageUrl || 'https://placehold.co/600x400'}
+            alt={product.name}
+            fill
+            className="object-cover transition-transform group-hover:scale-105"
+            data-ai-hint={product.imageHint}
+          />
+        </Link>
+        {product.has3dPreview && (
+          <Badge variant="secondary" className="absolute top-3 right-3">
+            <Box className="h-3 w-3 mr-1.5" />
+            3D Preview
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="p-4 flex-grow">
+        <p className="text-sm text-muted-foreground">{product.category}</p>
+        <h3 className="font-semibold mt-1">
+          <Link href={`/products/${product.id}`} className="hover:text-primary transition-colors">
+            {product.name}
+          </Link>
+        </h3>
+        <div className="flex items-center mt-2 text-sm text-muted-foreground">
+          <Star className="h-4 w-4 mr-1 text-accent fill-accent" />
+          <span>{rating.toFixed(1)}</span>
+          <span className="mx-1">·</span>
+          <span>{reviewCount} reviews</span>
+        </div>
+      </CardContent>
+      <CardFooter className="p-4 pt-0">
+        <div className="flex justify-between items-center w-full">
+            <p className="text-lg font-semibold">${product.price.toFixed(2)}</p>
+            <Button variant="outline" size="icon" onClick={handleAddToCart}>
+                <ShoppingCart className="h-4 w-4" />
+                <span className="sr-only">Add to cart</span>
+            </Button>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}

@@ -1,0 +1,88 @@
+
+export type Timestamp = {
+  toDate: () => Date;
+};
+
+export type Product = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  rating?: number;
+  reviewCount?: number;
+  imageUrl: string;
+  imageHint?: string;
+  has3dPreview?: boolean;
+  createdAt?: Timestamp;
+  description?: string;
+  tags?: string[];
+  uploaderId: string;
+  uploaderName: string;
+};
+
+export type Upload = {
+  id: string;
+  modelName: string;
+  fileName: string;
+  filePath: string;
+  downloadURL: string;
+  notes: string;
+  userId: string;
+  userEmail: string | null;
+  userDisplayName: string | null;
+  phoneNumber: string;
+  createdAt: Timestamp;
+}
+
+export type SiteSettings = {
+  aboutMission?: string;
+  aboutContact?: string;
+  footerBlurb?: string;
+};
+
+export type ContactSubmission = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: Timestamp;
+};
+
+export type Order = {
+    id: string;
+    userId: string;
+    orderDate: Timestamp;
+    totalAmount: number;
+    status: 'Pending' | 'Printing' | 'Finished' | 'Pooled';
+    items: {
+        productId: string;
+        name: string;
+        quantity: number;
+        price: number;
+        imageUrl?: string;
+    }[];
+    productIds: string[];
+    shippingAddress: {
+        fullName: string;
+        addressLine1: string;
+        city: string;
+        postalCode: string;
+        country: string;
+    },
+    phoneNumber: string;
+    customerEmail?: string;
+    predictedFinishDate?: Timestamp;
+    isPrioritized?: boolean;
+    assignedAdminIds: string[];
+}
+
+export type UserProfile = {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL: string | null;
+  role: 'user' | 'store-owner' | 'admin';
+  registrationDate: Timestamp;
+  emailVerified?: boolean;
+};

@@ -1,0 +1,41 @@
+
+'use client';
+import { ProductCard } from '@/components/product-card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useProducts } from '@/hooks/use-data';
+import type { Product } from '@/lib/types';
+
+
+export default function ProductsPage() {
+  const { data: products, loading } = useProducts();
+
+  return (
+    <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+      <div className="text-center mb-16">
+        <h1 className="font-headline text-5xl">All Models</h1>
+        <p className="text-muted-foreground mt-2 text-lg">Browse our full collection of high-quality 3D assets.</p>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+        {loading ? (
+          Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-2">
+              <Skeleton className="aspect-[4/3] w-full" />
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+          ))
+        ) : products && products.length > 0 ? (
+          products.map((product) => (
+            <ProductCard 
+              key={product.id} 
+              product={product}
+            />
+          ))
+        ) : (
+          <p className="col-span-full text-center text-muted-foreground">No products have been added yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
