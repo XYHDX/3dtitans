@@ -111,6 +111,11 @@ const seedUsers: UserRecord[] = [
   },
 ];
 
+const seedUsersByEmail = seedUsers.reduce<Record<string, UserRecord>>((acc, u) => {
+  if (u.email) acc[u.email.toLowerCase()] = u;
+  return acc;
+}, {});
+
 const seedProducts: Product[] = [
   {
     id: 'prod-1',
@@ -199,10 +204,25 @@ export const useAppStore = create<AppState>()(
       newsletterSubscriptions: [],
 
       login: (email, password) => {
-        const user = get().users.find((u) => u.email === email && u.password === password);
-        if (!user) return { ok: false, message: 'Invalid credentials' };
-        set({ currentUserId: user.id });
-        return { ok: true };
+        const emailLc = email.toLowerCase();
+        const user = get().users.find(
+          (u) => (u.email || '').toLowerCase() === emailLc && u.password === password
+        );
+        if (user) {
+          set({ currentUserId: user.id });
+          return { ok: true };
+        }
+
+        // Fallback: if a known seed user matches, re-seed and log in
+        const seedMatch = seedUsersByEmail[emailLc];
+        if (seedMatch && seedMatch.password === password) {
+          const newUser = { ...seedMatch, registrationDate: timestamp() };
+          const filtered = get().users.filter((u) => (u.email || '').toLowerCase() !== emailLc);
+          set({ users: [...filtered, newUser], currentUserId: newUser.id });
+          return { ok: true };
+        }
+
+        return { ok: false, message: 'Invalid credentials' };
       },
       signup: (user) => {
         const exists = get().users.some((u) => u.email === user.email);
