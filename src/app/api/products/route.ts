@@ -23,12 +23,16 @@ function mapProduct(product: any) {
 }
 
 export async function GET() {
-  const products = await prisma.product.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: { uploader: { select: { id: true, name: true } } },
-  });
-
-  return NextResponse.json({ products: products.map(mapProduct) });
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { uploader: { select: { id: true, name: true } } },
+    });
+    return NextResponse.json({ products: products.map(mapProduct) });
+  } catch (error) {
+    console.error('Products GET failed', error);
+    return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -38,27 +42,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json();
-  const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview } = body;
+  try {
+    const body = await req.json();
+    const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview } = body;
 
-  if (!name || !category || !price || !imageUrl) {
-    return NextResponse.json({ error: 'Name, category, price, and imageUrl are required' }, { status: 400 });
+    if (!name || !category || !price || !imageUrl) {
+      return NextResponse.json({ error: 'Name, category, price, and imageUrl are required' }, { status: 400 });
+    }
+
+    const product = await prisma.product.create({
+      data: {
+        name,
+        category,
+        price,
+        description: description || '',
+        tags: Array.isArray(tags) ? tags.join(',') : tags || '',
+        imageUrl,
+        imageHint: imageHint || '',
+        has3dPreview: !!has3dPreview,
+        uploaderId: user.id,
+        uploaderName: user.name || user.email || 'Uploader',
+      },
+    });
+
+    return NextResponse.json({ product: mapProduct(product) });
+  } catch (error) {
+    console.error('Products POST failed', error);
+    return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });
   }
-
-  const product = await prisma.product.create({
-    data: {
-      name,
-      category,
-      price,
-      description: description || '',
-      tags: Array.isArray(tags) ? tags.join(',') : tags || '',
-      imageUrl,
-      imageHint: imageHint || '',
-      has3dPreview: !!has3dPreview,
-      uploaderId: user.id,
-      uploaderName: user.name || user.email || 'Uploader',
-    },
-  });
-
-  return NextResponse.json({ product: mapProduct(product) });
 }

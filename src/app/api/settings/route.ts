@@ -6,20 +6,25 @@ import { NextResponse } from 'next/server';
 const KEYS = ['aboutMission', 'aboutContact', 'footerBlurb'] as const;
 
 export async function GET() {
-  const settings = await prisma.siteSetting.findMany({
-    where: { key: { in: KEYS as unknown as string[] } },
-  });
+  try {
+    const settings = await prisma.siteSetting.findMany({
+      where: { key: { in: KEYS as unknown as string[] } },
+    });
 
-  const map: Record<string, string> = {};
-  settings.forEach((s) => (map[s.key] = s.value));
+    const map: Record<string, string> = {};
+    settings.forEach((s) => (map[s.key] = s.value));
 
-  return NextResponse.json({
-    settings: {
-      aboutMission: map.aboutMission || '',
-      aboutContact: map.aboutContact || '',
-      footerBlurb: map.footerBlurb || '',
-    },
-  });
+    return NextResponse.json({
+      settings: {
+        aboutMission: map.aboutMission || '',
+        aboutContact: map.aboutContact || '',
+        footerBlurb: map.footerBlurb || '',
+      },
+    });
+  } catch (error) {
+    console.error('Settings GET failed', error);
+    return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -29,15 +34,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await req.json();
-  const updates = KEYS.map((key) =>
-    prisma.siteSetting.upsert({
-      where: { key },
-      update: { value: body[key] || '' },
-      create: { key, value: body[key] || '' },
-    })
-  );
-  await Promise.all(updates);
+  try {
+    const body = await req.json();
+    const updates = KEYS.map((key) =>
+      prisma.siteSetting.upsert({
+        where: { key },
+        update: { value: body[key] || '' },
+        create: { key, value: body[key] || '' },
+      })
+    );
+    await Promise.all(updates);
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Settings POST failed', error);
+    return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+  }
 }
