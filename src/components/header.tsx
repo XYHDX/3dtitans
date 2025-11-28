@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { CartSheet } from './cart-sheet';
 import { Badge } from './ui/badge';
-import { useLogin, useSessionUser, useUsers } from '@/hooks/use-session';
+import { useLogin, useSessionUser } from '@/hooks/use-session';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from './ui/dropdown-menu';
 import { useRouter } from 'next/navigation';
@@ -34,19 +34,19 @@ export function Header() {
   const { cart } = useCart();
   const { user } = useSessionUser();
   const { logout } = useLogin();
-  const { users } = useUsers();
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push('/');
   };
 
   const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
-  const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'U';
-    return name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
+  const getInitials = (name: string | null | undefined, email?: string | null) => {
+    const source = name || email;
+    if (!source) return 'U';
+    return source.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
   }
   
   const authContent = user ? (
@@ -64,7 +64,7 @@ export function Header() {
           <Button variant="ghost" className="relative h-10 w-10 rounded-full">
              <Avatar className="h-10 w-10">
               <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
-              <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+              <AvatarFallback>{getInitials(user.displayName, user.email)}</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>

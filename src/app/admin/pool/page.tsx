@@ -4,20 +4,18 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useSessionUser } from "@/hooks/use-session";
 import { useOrders } from "@/hooks/use-data";
-import { useAppStore } from "@/lib/app-store";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/lib/types";
 
-const ClaimOrderButton = ({ order }: { order: Order }) => {
+const ClaimOrderButton = ({ order, onClaim }: { order: Order; onClaim: (id: string, ownerId: string) => Promise<any> }) => {
     const { user } = useSessionUser();
-    const claimOrder = useAppStore((s) => s.claimOrder);
     const { toast } = useToast();
 
-    const handleClaim = () => {
+    const handleClaim = async () => {
         if (!user) return;
-        claimOrder(order.id, user.id || user.uid);
+        await onClaim(order.id, user.id || user.uid);
         toast({
             title: 'Order Claimed!',
             description: `You have claimed order ${order.id.substring(0, 8)}.`,
@@ -31,7 +29,7 @@ const ClaimOrderButton = ({ order }: { order: Order }) => {
 
 export default function OrderPoolPage() {
     const { user } = useSessionUser();
-    const { data: orders, loading } = useOrders({ statusIn: ['Pooled'] });
+    const { data: orders, loading, claimOrder } = useOrders({ statusIn: ['Pooled'] });
 
     const claimableOrders = orders?.filter(order => !order.assignedAdminIds.includes(user?.id || ''));
 
@@ -83,7 +81,7 @@ export default function OrderPoolPage() {
                                     <TableCell>{order.items.reduce((acc, item) => acc + item.quantity, 0)}</TableCell>
                                     <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                                     <TableCell className="text-right">
-                                        <ClaimOrderButton order={order} />
+                                        <ClaimOrderButton order={order} onClaim={claimOrder} />
                                     </TableCell>
                                 </TableRow>
                             ))

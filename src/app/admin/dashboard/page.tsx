@@ -5,18 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, UploadCloud, Users, ShoppingBag } from 'lucide-react';
 import type { Order, Product, Upload, UserProfile } from '@/lib/types';
 import { useSessionUser } from '@/hooks/use-session';
-import { useAppStore } from '@/lib/app-store';
+import { useProducts, useUploads, useOrders } from '@/hooks/use-data';
+import { useUsers } from '@/hooks/use-session';
 
 
 export default function DashboardPage() {
     const { user } = useSessionUser();
-    const { products, uploads, users, orders } = useAppStore((s) => ({
-        products: s.products,
-        uploads: s.uploads,
-        users: s.users,
-        orders: s.orders,
-    }));
-    const isLoading = false;
+    const { data: products, loading: productsLoading } = useProducts();
+    const { data: uploads, loading: uploadsLoading } = useUploads();
+    const { data: orders, loading: ordersLoading } = useOrders();
+    const { data: users, loading: usersLoading } = useUsers();
+    const isLoading = productsLoading || uploadsLoading || ordersLoading || usersLoading;
 
     if (user?.role !== 'admin') {
         return (

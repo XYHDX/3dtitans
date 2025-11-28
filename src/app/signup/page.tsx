@@ -21,33 +21,30 @@ export default function SignUpPage() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) {
+    const hasMinLength = password.length >= 8;
+    const hasLetter = /[A-Za-z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    if (!hasMinLength || !hasLetter || !hasNumber) {
       toast({
         variant: 'destructive',
         title: 'Weak Password',
-        description: 'Password must be at least 6 characters long.',
+        description: 'Password must be at least 8 characters and include a letter and a number.',
       });
       return;
     }
     setLoading(true);
 
     try {
-      const ok = signup({
-        id: '',
-        uid: '',
-        displayName,
+      const result = await signup({
         email,
-        photoURL: null,
-        role: 'user',
-        emailVerified: false,
-        registrationDate: { toDate: () => new Date() },
         password,
+        displayName,
       });
-      if (!ok.ok) {
+      if (!result.ok) {
         toast({
           variant: 'destructive',
           title: 'Sign Up Failed',
-          description: ok.message || 'An unknown error occurred.',
+          description: result.message || 'An unknown error occurred.',
         });
       } else {
         toast({

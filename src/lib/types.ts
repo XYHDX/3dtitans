@@ -8,6 +8,7 @@ export type Product = {
   name: string;
   category: string;
   price: number;
+  uploaderName?: string;
   rating?: number;
   reviewCount?: number;
   imageUrl: string;
@@ -24,6 +25,7 @@ export type Upload = {
   id: string;
   modelName: string;
   fileName: string;
+  fileUrl?: string;
   filePath: string;
   downloadURL: string;
   notes: string;
@@ -72,7 +74,7 @@ export type Order = {
     },
     phoneNumber: string;
     customerEmail?: string;
-    predictedFinishDate?: Timestamp;
+    predictedFinishDate?: Timestamp | Date | string;
     isPrioritized?: boolean;
     assignedAdminIds: string[];
 }

@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Twitter, Instagram, Facebook } from 'lucide-react';
 import type { SiteSettings } from '@/lib/types';
 import { useSiteSettings } from '@/hooks/use-data';
-import { useAppStore } from '@/lib/app-store';
+import { useNewsletterSubscriptions } from '@/hooks/use-data';
 
 const footerLinks = {
   Marketplace: [
@@ -31,7 +31,7 @@ const footerLinks = {
 
 export function Footer() {
   const { data: settings } = useSiteSettings();
-  const addNewsletterSubscription = useAppStore((s) => s.addNewsletterSubscription);
+  const { subscribe } = useNewsletterSubscriptions({ skipFetch: true });
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -41,22 +41,27 @@ export function Footer() {
     if (!email) return;
 
     setLoading(true);
-    try {
-      addNewsletterSubscription(email);
-      toast({
-        title: 'Subscribed!',
-        description: 'Thanks for joining our newsletter.',
-      });
-      setEmail('');
-    } catch (err) {
-      toast({
-        variant: 'destructive',
-        title: 'Subscription Failed',
-        description: 'Could not subscribe. Please try again later.',
-      });
-    } finally {
-      setLoading(false);
-    }
+    (async () => {
+      try {
+        const res = await subscribe(email);
+        if (!res) {
+          throw new Error('Failed to subscribe');
+        }
+        toast({
+          title: 'Subscribed!',
+          description: 'Thanks for joining our newsletter.',
+        });
+        setEmail('');
+      } catch (err) {
+        toast({
+          variant: 'destructive',
+          title: 'Subscription Failed',
+          description: 'Could not subscribe. Please try again later.',
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
   };
 
   return (

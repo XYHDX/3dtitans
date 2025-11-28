@@ -23,7 +23,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = login(email, password);
+      const result = await login(email, password);
       if (!result.ok) {
         toast({
           variant: 'destructive',

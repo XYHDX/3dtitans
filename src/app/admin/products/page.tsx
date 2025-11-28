@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Product } from '@/lib/types';
 import { format } from 'date-fns';
-import { Sparkles, Trash2, Edit } from 'lucide-react';
+import { Trash2, Edit } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
 import {
@@ -40,13 +40,7 @@ import {
 } from "@/components/ui/dialog"
 import Link from 'next/link';
 import { useSessionUser } from '@/hooks/use-session';
-import { useAppStore } from '@/lib/app-store';
 import { useProducts } from '@/hooks/use-data';
-
-
-const MAX_FILE_SIZE_MB = 5;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 const productSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),
@@ -54,13 +48,7 @@ const productSchema = z.object({
   category: z.string().min(2, 'Category is required'),
   description: z.string().optional(),
   tags: z.string().optional(),
-  image: z.any()
-    .refine((files) => files?.length == 1, "Image is required.")
-    .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE_BYTES, `Max file size is ${MAX_FILE_SIZE_MB}MB.`)
-    .refine(
-      (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
-      ".jpg, .jpeg, .png and .webp files are accepted."
-    ),
+  imageUrl: z.string().url('Image URL is required'),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -70,11 +58,10 @@ const editPriceSchema = z.object({
 });
 type EditPriceFormData = z.infer<typeof editPriceSchema>;
 
-function EditProductDialog({ product }: { product: Product }) {
+function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: (id: string, patch: Partial<Product>) => Promise<Product | null> }) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const { toast } = useToast();
-    const updateProduct = useAppStore((s) => s.updateProduct);
     const { register, handleSubmit, formState: { errors } } = useForm<EditPriceFormData>({
         resolver: zodResolver(editPriceSchema),
         defaultValues: {
@@ -82,11 +69,15 @@ function EditProductDialog({ product }: { product: Product }) {
         },
     });
 
-    const onSubmit = (data: EditPriceFormData) => {
+    const onSubmit = async (data: EditPriceFormData) => {
         setLoading(true);
-        updateProduct(product.id, { price: data.price });
-        toast({ title: 'Success', description: 'Product price updated.' });
-        setOpen(false);
+        const updated = await onUpdate(product.id, { price: data.price });
+        if (updated) {
+            toast({ title: 'Success', description: 'Product price updated.' });
+            setOpen(false);
+        } else {
+            toast({ variant: 'destructive', title: 'Update failed', description: 'Could not update product.' });
+        }
         setLoading(false);
     };
 
@@ -119,13 +110,16 @@ function EditProductDialog({ product }: { product: Product }) {
     )
 }
 
-function DeleteProductAlert({ productId, productName }: { productId: string, productName: string }) {
+function DeleteProductAlert({ productId, productName, onDelete }: { productId: string, productName: string, onDelete: (id: string) => Promise<boolean> }) {
     const { toast } = useToast();
-    const deleteProduct = useAppStore((s) => s.deleteProduct);
 
-    const handleDelete = () => {
-        deleteProduct(productId);
-        toast({ title: 'Product Deleted', description: `${productName} has been removed.` });
+    const handleDelete = async () => {
+        const ok = await onDelete(productId);
+        if (ok) {
+            toast({ title: 'Product Deleted', description: `${productName} has been removed.` });
+        } else {
+            toast({ variant: 'destructive', title: 'Delete failed', description: 'Could not delete product.' });
+        }
     };
 
     return (
@@ -152,8 +146,7 @@ function DeleteProductAlert({ productId, productName }: { productId: string, pro
 function ProductsManager() {
   const [loading, setLoading] = useState(false);
   const { user } = useSessionUser();
-  const addProduct = useAppStore((s) => s.addProduct);
-  const { data: products, loading: productsLoading } = useProducts(
+  const { data: products, loading: productsLoading, addProduct, deleteProduct, updateProduct } = useProducts(
     user?.role === 'store-owner' && user?.id ? { uploaderId: user.id } : undefined
   );
   const { toast } = useToast();
@@ -175,19 +168,13 @@ function ProductsManager() {
     setLoading(true);
     
     try {
-      const imageFile = data.image[0] as File;
-      const filePath = `products/${user.id || user.uid}/${Date.now()}-${imageFile.name}`;
-      const downloadURL = URL.createObjectURL(imageFile);
-
       const productData = {
-        id: crypto.randomUUID(),
         name: data.name,
         price: data.price,
         category: data.category,
         description: data.description || '',
         tags: (data.tags || '').split(',').map(tag => tag.trim()).filter(Boolean),
-        imageUrl: downloadURL,
-        createdAt: { toDate: () => new Date() },
+        imageUrl: data.imageUrl,
         uploaderId: user.id || user.uid,
         uploaderName: user.displayName || 'Unnamed User',
         rating: 0,
@@ -195,7 +182,10 @@ function ProductsManager() {
         has3dPreview: false,
       };
       
-      addProduct(productData);
+      const created = await addProduct(productData as any);
+      if (!created) {
+        throw new Error('Failed to add product');
+      }
       
       toast({
         title: 'Product Added',
@@ -257,9 +247,9 @@ function ProductsManager() {
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-image">Product Image</Label>
-                <Input id="add-product-image" type="file" {...register('image')} accept="image/png, image/jpeg, image/webp" />
-                {errors.image && <p className="text-xs text-destructive">{(errors.image as any)?.message}</p>}
+                <Label htmlFor="add-product-image">Product Image URL</Label>
+                <Input id="add-product-image" type="url" placeholder="https://example.com/image.jpg" {...register('imageUrl')} />
+                {errors.imageUrl && <p className="text-xs text-destructive">{errors.imageUrl.message}</p>}
               </div>
               <Button type="submit" disabled={loading || productsLoading}>
                 {loading ? 'Adding...' : 'Add Product'}
@@ -329,8 +319,8 @@ function ProductsManager() {
                       <TableCell className="text-right">
                         {isAllowedToManage(product) ? (
                             <div className="flex justify-end items-center">
-                                <EditProductDialog product={product} />
-                                <DeleteProductAlert productId={product.id} productName={product.name} />
+                                <EditProductDialog product={product} onUpdate={updateProduct} />
+                                <DeleteProductAlert productId={product.id} productName={product.name} onDelete={deleteProduct} />
                             </div>
                         ) : null }
                       </TableCell>

@@ -115,6 +115,7 @@ const seedUsersByEmail = seedUsers.reduce<Record<string, UserRecord>>((acc, u) =
   if (u.email) acc[u.email.toLowerCase()] = u;
   return acc;
 }, {});
+const seedUserEmails = new Set(Object.keys(seedUsersByEmail));
 
 const seedProducts: Product[] = [
   {
@@ -225,8 +226,27 @@ export const useAppStore = create<AppState>()(
         return { ok: false, message: 'Invalid credentials' };
       },
       signup: (user) => {
-        const exists = get().users.some((u) => u.email === user.email);
-        if (exists) return { ok: false, message: 'Email already registered' };
+        const emailLc = (user.email || '').toLowerCase();
+        if (!emailLc) return { ok: false, message: 'Email is required' };
+
+        const existing = get().users.find((u) => (u.email || '').toLowerCase() === emailLc);
+        if (existing) {
+          // Allow overriding seeded demo users so new accounts can be registered with the same email.
+          if (!seedUserEmails.has(emailLc)) return { ok: false, message: 'Email already registered' };
+          const newUser = {
+            ...user,
+            email: user.email,
+            id: user.id || crypto.randomUUID(),
+            uid: user.uid || crypto.randomUUID(),
+            registrationDate: timestamp(),
+          };
+          set((state) => ({
+            users: state.users.filter((u) => (u.email || '').toLowerCase() !== emailLc).concat(newUser),
+            currentUserId: newUser.id,
+          }));
+          return { ok: true };
+        }
+
         const newUser = {
           ...user,
           id: user.id || crypto.randomUUID(),

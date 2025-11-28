@@ -51,9 +51,15 @@ function DeleteUserAlert({ userId, userName }: { userId: string, userName: strin
 
     const handleDelete = async () => {
         setIsDeleting(true);
-        deleteUser(userId);
-        toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
-        setIsDeleting(false);
+        try {
+            const ok = await deleteUser(userId);
+            if (!ok) throw new Error('Delete failed');
+            toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Unable to delete user.' });
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     return (
@@ -89,11 +95,20 @@ function VerificationSwitch({ user }: { user: UserProfile & { id: string }}) {
 
   const handleVerificationChange = async (verified: boolean) => {
     setIsVerified(verified); // Optimistically update the UI
-    updateUserVerification(user.id, verified);
-    toast({
-      title: 'User Updated',
-      description: `${user.displayName} has been ${verified ? 'verified' : 'unverified'}.`,
-    });
+    const ok = await updateUserVerification(user.id, verified);
+    if (ok) {
+      toast({
+        title: 'User Updated',
+        description: `${user.displayName} has been ${verified ? 'verified' : 'unverified'}.`,
+      });
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'Update failed',
+        description: 'Could not update verification.',
+      });
+      setIsVerified(!verified);
+    }
   };
 
   return (
@@ -109,12 +124,20 @@ function RoleSelector({ user }: { user: UserProfile & { id: string } }) {
   const { toast } = useToast();
   const { updateUserRole } = useUsers();
 
-  const handleRoleChange = (newRole: 'user' | 'store-owner' | 'admin') => {
-    updateUserRole(user.id, newRole);
-    toast({
-      title: 'Role Updated',
-      description: `${user.displayName}'s role has been changed to ${newRole}.`,
-    });
+  const handleRoleChange = async (newRole: 'user' | 'store-owner' | 'admin') => {
+    const ok = await updateUserRole(user.id, newRole);
+    if (ok) {
+      toast({
+        title: 'Role Updated',
+        description: `${user.displayName}'s role has been changed to ${newRole}.`,
+      });
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'Update failed',
+        description: 'Could not update role.',
+      });
+    }
   };
 
   return (

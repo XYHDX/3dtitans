@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -38,6 +38,9 @@ model Product {
   tags         String?
   imageUrl     String
   imageHint    String?
+  uploaderName String?
+  rating       Float     @default(0)
+  reviewCount  Int       @default(0)
   has3dPreview Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -53,6 +56,9 @@ model Upload {
   modelName       String
   fileName        String
   fileUrl         String
+  downloadURL     String
+  userEmail       String?
+  userDisplayName String?
   blobPath        String?
   notes           String?
   phoneNumber     String
@@ -116,6 +122,8 @@ model OrderAssignment {
 
   owner    User   @relation("AssignmentOwner", fields: [ownerId], references: [id])
   ownerId  String
+
+  @@unique([orderId, ownerId])
 }
 
 model SiteSetting {

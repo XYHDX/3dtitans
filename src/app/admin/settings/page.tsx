@@ -11,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSiteSettings } from '@/hooks/use-data';
-import { useAppStore } from '@/lib/app-store';
 import { useSessionUser } from '@/hooks/use-session';
 
 const settingsSchema = z.object({
@@ -26,8 +25,7 @@ export default function SettingsAdminPage() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { user } = useSessionUser();
-  const { data: settings, loading: settingsLoading } = useSiteSettings();
-  const upsertSettings = useAppStore((s) => s.upsertSettings);
+  const { data: settings, loading: settingsLoading, saveSettings } = useSiteSettings();
   
   const {
     register,
@@ -50,11 +48,19 @@ export default function SettingsAdminPage() {
 
   const onSubmit = async (data: SettingsFormData) => {
     setLoading(true);
-    upsertSettings(data);
-    toast({
-      title: 'Settings Saved',
-      description: 'Your website settings have been updated.',
-    });
+    const ok = await saveSettings(data);
+    if (ok) {
+      toast({
+        title: 'Settings Saved',
+        description: 'Your website settings have been updated.',
+      });
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description: 'Could not update settings.',
+      });
+    }
     setLoading(false);
   };
 

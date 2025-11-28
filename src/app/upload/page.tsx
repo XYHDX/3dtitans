@@ -12,7 +12,7 @@ import { UploadCloud, File as FileIcon, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { useSessionUser } from '@/hooks/use-session';
-import { useAppStore } from '@/lib/app-store';
+import { useUploads } from '@/hooks/use-data';
 
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -28,7 +28,7 @@ export default function UploadPage() {
 
   const { toast } = useToast();
   const { user } = useSessionUser();
-  const addUpload = useAppStore((s) => s.addUpload);
+  const { addUpload } = useUploads({ skipFetch: true });
   const router = useRouter();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,6 +59,15 @@ export default function UploadPage() {
     setError(null);
   };
 
+  const fileToDataUrl = (file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!file || !user) {
@@ -69,26 +78,28 @@ export default function UploadPage() {
       });
       return;
     }
-    
+
     setLoading(true);
     setError(null);
 
     try {
-      const fakeUrl = URL.createObjectURL(file);
+      const dataUrl = await fileToDataUrl(file);
       const uploadData = {
-        id: crypto.randomUUID(),
         modelName,
         fileName: file.name,
         filePath: `uploads/${user.id || user.uid || 'user'}/${Date.now()}-${file.name}`,
-        downloadURL: fakeUrl,
+        fileUrl: dataUrl,
+        downloadURL: dataUrl,
         notes,
         userId: user.id || user.uid,
         userEmail: user.email,
         userDisplayName: user.displayName,
         phoneNumber,
-        createdAt: { toDate: () => new Date() },
       };
-      addUpload(uploadData);
+      const created = await addUpload(uploadData as any);
+      if (!created) {
+        throw new Error('Could not save upload');
+      }
 
       toast({
         title: 'Upload successful!',

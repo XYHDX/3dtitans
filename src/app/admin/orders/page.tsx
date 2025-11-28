@@ -16,15 +16,13 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useSessionUser } from '@/hooks/use-session';
 import { useOrders } from '@/hooks/use-data';
-import { useAppStore } from '@/lib/app-store';
 import type { Order } from '@/lib/types';
 
-const OrderStatusSelector = ({ order }: { order: Order }) => {
+const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
-    const updateOrder = useAppStore((s) => s.updateOrder);
 
-    const handleStatusChange = (newStatus: Order['status']) => {
-        updateOrder(order.id, { status: newStatus });
+    const handleStatusChange = async (newStatus: Order['status']) => {
+        await onUpdate(order.id, { status: newStatus });
         toast({
             title: 'Order Status Updated',
             description: `Order ${order.id.substring(0, 8)} is now ${newStatus}.`,
@@ -46,12 +44,11 @@ const OrderStatusSelector = ({ order }: { order: Order }) => {
     );
 };
 
-const ReleaseToPoolButton = ({ order }: { order: Order }) => {
+const ReleaseToPoolButton = ({ order, onRelease }: { order: Order; onRelease: (id: string) => Promise<any> }) => {
     const { toast } = useToast();
-    const releaseOrderToPool = useAppStore((s) => s.releaseOrderToPool);
 
-    const handleRelease = () => {
-        releaseOrderToPool(order.id);
+    const handleRelease = async () => {
+        await onRelease(order.id);
         toast({
             title: 'Order Released to Pool',
             description: `Order has been made available for other store owners.`,
@@ -66,9 +63,8 @@ const ReleaseToPoolButton = ({ order }: { order: Order }) => {
     )
 }
 
-const PredictedDateSelector = ({ order }: { order: Order }) => {
+const PredictedDateSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
-    const updateOrder = useAppStore((s) => s.updateOrder);
     const [open, setOpen] = useState(false);
     const [date, setDate] = useState<Date | undefined>(() => {
         if (!order.predictedFinishDate) return undefined;
@@ -81,7 +77,7 @@ const PredictedDateSelector = ({ order }: { order: Order }) => {
     const handleDateSelect = (selectedDate: Date | undefined) => {
         if (!selectedDate) return;
         setDate(selectedDate);
-        updateOrder(order.id, { predictedFinishDate: { toDate: () => selectedDate } as any });
+        onUpdate(order.id, { predictedFinishDate: selectedDate as any });
         toast({
             title: 'Predicted Date Set',
             description: `Finish date for order ${order.id.substring(0, 8)} updated.`,
@@ -109,13 +105,12 @@ const PredictedDateSelector = ({ order }: { order: Order }) => {
     )
 }
 
-const PrioritizeSwitch = ({ order }: { order: Order }) => {
+const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
-    const updateOrder = useAppStore((s) => s.updateOrder);
 
-    const handlePrioritizeChange = (isPrioritized: boolean) => {
+    const handlePrioritizeChange = async (isPrioritized: boolean) => {
         const newTotalAmount = isPrioritized ? order.totalAmount * 1.2 : order.totalAmount / 1.2;
-        updateOrder(order.id, { 
+        await onUpdate(order.id, { 
             isPrioritized,
             totalAmount: newTotalAmount
         });
@@ -140,7 +135,7 @@ const PrioritizeSwitch = ({ order }: { order: Order }) => {
 
 function OrdersList() {
     const { user } = useSessionUser();
-    const { data: orders, loading: ordersLoading } = useOrders(
+    const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(
         user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : { statusIn: ['Pending', 'Printing', 'Finished', 'Pooled'] }
     );
 
@@ -172,7 +167,7 @@ function OrdersList() {
                             </div>
                         </AccordionTrigger>
                         <div className="flex items-center gap-4 py-2" onClick={(e) => e.stopPropagation()}>
-                            <OrderStatusSelector order={order} />
+                            <OrderStatusSelector order={order} onUpdate={updateOrder} />
                             <span className="font-bold text-lg">${order.totalAmount.toFixed(2)}</span>
                         </div>
                     </div>
@@ -214,9 +209,9 @@ function OrdersList() {
                                 <div>
                                     <h4 className="font-semibold mb-2">Order Management:</h4>
                                     <div className="text-sm bg-background p-4 rounded-md space-y-4">
-                                      <PredictedDateSelector order={order} />
-                                      <PrioritizeSwitch order={order} />
-                                      <ReleaseToPoolButton order={order} />
+                                      <PredictedDateSelector order={order} onUpdate={updateOrder} />
+                                      <PrioritizeSwitch order={order} onUpdate={updateOrder} />
+                                      <ReleaseToPoolButton order={order} onRelease={releaseOrderToPool} />
                                     </div>
                                 </div>
                             </div>

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteSettings } from "@/hooks/use-data";
-import { useAppStore } from "@/lib/app-store";
+import { useContactSubmissions } from "@/hooks/use-data";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -24,7 +24,7 @@ type ContactFormData = z.infer<typeof contactSchema>;
 
 export default function AboutPage() {
   const { data: settings } = useSiteSettings();
-  const addContactSubmission = useAppStore((s) => s.addContactSubmission);
+  const { submitContact } = useContactSubmissions({ skipFetch: true });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -35,11 +35,12 @@ export default function AboutPage() {
   const onSubmit = async (data: ContactFormData) => {
     setLoading(true);
     try {
-      addContactSubmission({
-        id: crypto.randomUUID(),
+      const saved = await submitContact({
         ...data,
-        createdAt: { toDate: () => new Date() },
-      });
+      } as any);
+      if (!saved) {
+        throw new Error('Could not submit contact form');
+      }
       toast({
         title: "Message Sent!",
         description: "Thank you for contacting us. We'll get back to you shortly.",

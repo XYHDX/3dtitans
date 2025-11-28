@@ -3,7 +3,6 @@
 import { useToast } from '@/hooks/use-toast';
 import { useSessionUser } from '@/hooks/use-session';
 import { useUploads } from '@/hooks/use-data';
-import { useAppStore } from '@/lib/app-store';
 import type { Upload } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
@@ -24,13 +23,16 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-function DeleteUploadAlert({ upload }: { upload: Upload }) {
+function DeleteUploadAlert({ upload, onDelete }: { upload: Upload; onDelete: (id: string) => Promise<boolean> }) {
   const { toast } = useToast();
-  const deleteUpload = useAppStore((s) => s.deleteUpload);
 
   const handleDelete = async () => {
-    deleteUpload(upload.id);
-    toast({ title: 'Upload Deleted', description: `${upload.fileName} has been removed.` });
+    const ok = await onDelete(upload.id);
+    if (ok) {
+      toast({ title: 'Upload Deleted', description: `${upload.fileName} has been removed.` });
+    } else {
+      toast({ variant: 'destructive', title: 'Delete failed', description: 'Could not delete upload.' });
+    }
   };
 
   return (
@@ -56,7 +58,7 @@ function DeleteUploadAlert({ upload }: { upload: Upload }) {
 
 export default function UploadsAdminPage() {
   const { user } = useSessionUser();
-  const { data: uploads, loading: uploadsLoading } = useUploads();
+  const { data: uploads, loading: uploadsLoading, deleteUpload } = useUploads();
 
   if (!user) {
     return (
@@ -129,7 +131,7 @@ export default function UploadsAdminPage() {
                           <span className="sr-only">Download</span>
                         </Link>
                       </Button>
-                      <DeleteUploadAlert upload={upload} />
+                      <DeleteUploadAlert upload={upload} onDelete={deleteUpload} />
                     </div>
                   </TableCell>
                 </TableRow>

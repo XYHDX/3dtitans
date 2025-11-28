@@ -17,8 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import type { Product } from '@/lib/types';
 import { useSessionUser } from '@/hooks/use-session';
-import { useAppStore } from '@/lib/app-store';
-import { useProducts } from '@/hooks/use-data';
+import { useProducts, useOrders } from '@/hooks/use-data';
 
 const addressSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
@@ -36,8 +35,8 @@ type AddressFormData = z.infer<typeof addressSchema>;
 export default function CheckoutPage() {
   const { cart, clearCart, total } = useCart();
   const { user } = useSessionUser();
-  const addOrder = useAppStore((s) => s.addOrder);
   const { data: products } = useProducts();
+  const { createOrder } = useOrders(undefined, { skipFetch: true });
   const { toast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -74,11 +73,7 @@ export default function CheckoutPage() {
       }
 
       const orderData = {
-        id: crypto.randomUUID(),
         userId: userId,
-        orderDate: { toDate: () => new Date() },
-        totalAmount: total,
-        status: 'Pending',
         items: cart.map(item => ({
           productId: item.id,
           name: item.name,
@@ -86,7 +81,7 @@ export default function CheckoutPage() {
           price: item.price,
           imageUrl: item.imageUrl,
         })),
-        productIds: cart.map(item => item.id),
+        totalAmount: total,
         shippingAddress: {
           fullName: addressData.fullName,
           addressLine1: addressData.addressLine1,
@@ -100,7 +95,8 @@ export default function CheckoutPage() {
         isPrioritized: false,
       };
 
-      addOrder(orderData);
+      const result = await createOrder(orderData as any);
+      if (!result.ok) throw new Error('Failed to place order');
 
       toast({
         title: 'Order Placed!',
