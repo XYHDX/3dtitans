@@ -22,8 +22,18 @@ export async function middleware(req: NextRequest) {
   }
 
   // Enforce roles.
-  if (isAdminPath && token.role !== 'admin') {
-    return NextResponse.redirect(new URL('/', req.url));
+  if (isAdminPath) {
+    const adminOnlySegments = ['/admin/users', '/admin/settings', '/admin/contact', '/admin/newsletter'];
+    const adminOnly = adminOnlySegments.some((seg) => pathname.startsWith(seg));
+
+    if (adminOnly && token.role !== 'admin') {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
+
+    // Allow both admin and store-owner for other admin routes.
+    if (!adminOnly && token.role !== 'admin' && token.role !== 'store-owner') {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
   }
   if (isStoreDashboard && token.role !== 'store-owner' && token.role !== 'admin') {
     return NextResponse.redirect(new URL('/', req.url));
