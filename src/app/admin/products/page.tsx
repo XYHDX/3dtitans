@@ -41,6 +41,7 @@ import {
 import Link from 'next/link';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts } from '@/hooks/use-data';
+import { supabase } from '@/lib/supabase/client';
 
 const productSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),
@@ -48,7 +49,19 @@ const productSchema = z.object({
   category: z.string().min(2, 'Category is required'),
   description: z.string().optional(),
   tags: z.string().optional(),
-  imageUrl: z.string().url('Image URL is required'),
+  imageFile: z
+    .any()
+    .refine((files) => files?.length === 1, 'Image is required')
+    .refine(
+      (files) => !files?.[0] || files[0].size <= 5 * 1024 * 1024,
+      'Max file size is 5MB'
+    )
+    .refine(
+      (files) =>
+        !files?.[0] ||
+        ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(files[0].type),
+      'Only JPG, PNG, or WEBP images are allowed'
+    ),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -145,6 +158,7 @@ function DeleteProductAlert({ productId, productName, onDelete }: { productId: s
 
 function ProductsManager() {
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const { user } = useSessionUser();
   const { data: products, loading: productsLoading, addProduct, deleteProduct, updateProduct } = useProducts(
     user?.role === 'store-owner' && user?.id ? { uploaderId: user.id } : undefined
@@ -165,16 +179,39 @@ function ProductsManager() {
         toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to add a product.' });
         return;
     }
+    if (!supabase) {
+      toast({ variant: 'destructive', title: 'Storage not configured', description: 'Supabase client is missing.' });
+      return;
+    }
     setLoading(true);
     
     try {
+      setUploadingImage(true);
+      const file = data.imageFile[0] as File;
+      const fileExt = file.name.split('.').pop();
+      const filePath = `products/${user.id || user.uid}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+      if (uploadError) {
+        throw uploadError;
+      }
+      const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+      const imageUrl = publicUrlData?.publicUrl;
+      if (!imageUrl) {
+        throw new Error('Could not get public URL for image');
+      }
+
       const productData = {
         name: data.name,
         price: data.price,
         category: data.category,
         description: data.description || '',
         tags: (data.tags || '').split(',').map(tag => tag.trim()).filter(Boolean),
-        imageUrl: data.imageUrl,
+        imageUrl,
         uploaderId: user.id || user.uid,
         uploaderName: user.displayName || 'Unnamed User',
         rating: 0,
@@ -202,6 +239,7 @@ function ProductsManager() {
           description: `An error occurred: ${error.message}`,
       });
     } finally {
+      setUploadingImage(false);
       setLoading(false);
     }
   };
@@ -247,12 +285,12 @@ function ProductsManager() {
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-image">Product Image URL</Label>
-                <Input id="add-product-image" type="url" placeholder="https://example.com/image.jpg" {...register('imageUrl')} />
-                {errors.imageUrl && <p className="text-xs text-destructive">{errors.imageUrl.message}</p>}
+                <Label htmlFor="add-product-image">Product Image (max 5MB)</Label>
+                <Input id="add-product-image" type="file" accept="image/jpeg,image/png,image/webp" {...register('imageFile')} />
+                {errors.imageFile && <p className="text-xs text-destructive">{errors.imageFile.message as string}</p>}
               </div>
-              <Button type="submit" disabled={loading || productsLoading}>
-                {loading ? 'Adding...' : 'Add Product'}
+              <Button type="submit" disabled={loading || productsLoading || uploadingImage}>
+                {loading ? 'Adding...' : uploadingImage ? 'Uploading...' : 'Add Product'}
               </Button>
             </form>
           </CardContent>
