@@ -8,6 +8,17 @@ import bcrypt from 'bcryptjs';
 const googleEnabled =
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
 
+const seedUsers: Record<
+  string,
+  { name: string; password: string; role: 'admin' | 'store-owner' | 'user' }
+> = {
+  'admin@3dtitans.com': { name: 'Admin Titan', password: 'admin123', role: 'admin' },
+  'yahyademeriah@gmail.com': { name: 'Yahya Demeriah', password: 'admin123', role: 'admin' },
+  'owner@3dtitans.com': { name: 'Store Owner', password: 'owner123', role: 'store-owner' },
+  'aboude.murad@gmail.com': { name: 'Aboude Murad', password: 'owner123', role: 'store-owner' },
+  'user@3dtitans.com': { name: 'Regular User', password: 'user123', role: 'user' },
+};
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: {
@@ -28,9 +39,25 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
+        const email = credentials.email.toLowerCase();
+        let user = await prisma.user.findUnique({
+          where: { email },
         });
+
+        // If DB is empty, auto-create known seed accounts so admin/store-owner logins work.
+        if (!user && seedUsers[email]) {
+          const seed = seedUsers[email];
+          const passwordHash = await bcrypt.hash(seed.password, 10);
+          user = await prisma.user.create({
+            data: {
+              email,
+              name: seed.name,
+              passwordHash,
+              role: seed.role,
+              emailVerified: new Date(),
+            },
+          });
+        }
 
         if (!user || !user.passwordHash) {
           return null;
