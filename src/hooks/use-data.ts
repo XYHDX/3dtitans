@@ -118,7 +118,19 @@ export function useUploads(options?: { skipFetch?: boolean }) {
     return true;
   }, []);
 
-  return { data: uploads, loading, refresh, addUpload, deleteUpload };
+  const assignUpload = useCallback(async (id: string, assignedOwnerId: string | null) => {
+    const res = await fetch(`/api/uploads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedOwnerId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.upload } : u)));
+    return data.upload as Upload;
+  }, []);
+
+  return { data: uploads, loading, refresh, addUpload, deleteUpload, assignUpload };
 }
 
 // Orders

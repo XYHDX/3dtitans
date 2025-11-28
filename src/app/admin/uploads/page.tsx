@@ -11,6 +11,8 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Download, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useUsers } from '@/hooks/use-session';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +60,9 @@ function DeleteUploadAlert({ upload, onDelete }: { upload: Upload; onDelete: (id
 
 export default function UploadsAdminPage() {
   const { user } = useSessionUser();
-  const { data: uploads, loading: uploadsLoading, deleteUpload } = useUploads();
+  const { data: uploads, loading: uploadsLoading, deleteUpload, assignUpload } = useUploads();
+  const { data: users } = useUsers();
+  const storeOwners = (users || []).filter((u) => u.role === 'store-owner' || u.role === 'admin');
 
   if (!user) {
     return (
@@ -87,13 +91,14 @@ export default function UploadsAdminPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>File Name</TableHead>
-              <TableHead>Date Uploaded</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+                  <TableHead>User</TableHead>
+                  <TableHead>File Name</TableHead>
+                  <TableHead>Date Uploaded</TableHead>
+                  <TableHead>Assigned To</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
             {uploadsLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
@@ -122,6 +127,28 @@ export default function UploadsAdminPage() {
                           return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
                         })()
                       : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    {user.role === 'admin' ? (
+                      <Select
+                        onValueChange={(val) => assignUpload(upload.id, val || null)}
+                        defaultValue={upload.assignedOwnerId || ''}
+                      >
+                        <SelectTrigger className="w-[220px]">
+                          <SelectValue placeholder="Unassigned" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Unassigned</SelectItem>
+                          {storeOwners.map((owner) => (
+                            <SelectItem key={owner.id} value={owner.id}>
+                              {owner.name || owner.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span>{upload.assignedOwnerId ? 'Assigned' : 'Unassigned'}</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end items-center">

@@ -29,7 +29,13 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const where =
+    user.role === 'store-owner'
+      ? { assignedOwnerId: user.id }
+      : {};
+
   const uploads = await prisma.upload.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
   });
 
