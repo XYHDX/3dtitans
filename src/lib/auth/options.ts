@@ -59,6 +59,16 @@ export const authOptions: NextAuthOptions = {
           });
         }
 
+        // If the user exists but has no passwordHash and matches a seed, set it.
+        if (user && !user.passwordHash && seedUsers[email]) {
+          const seed = seedUsers[email];
+          const passwordHash = await bcrypt.hash(seed.password, 10);
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: { passwordHash, role: seed.role, name: user.name || seed.name, emailVerified: user.emailVerified || new Date() },
+          });
+        }
+
         if (!user || !user.passwordHash) {
           return null;
         }
