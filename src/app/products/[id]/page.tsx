@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Star, Box, ShoppingCart, CheckCircle, Plus, Minus } from 'lucide-react';
+import { Star, Box, ShoppingCart, Plus, Minus, ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { Badge } from '@/components/ui/badge';
 import { useProducts } from '@/hooks/use-data';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -23,10 +24,20 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const [quantity, setQuantity] = useState(1);
 
   const product = products?.find((p) => p.id === id) || null;
-  const gallery = (product?.imageGallery && product.imageGallery.length > 0)
-    ? product.imageGallery
-    : product?.imageUrl ? [product.imageUrl] : [];
+  const gallery = useMemo(
+    () =>
+      (product?.imageGallery && product.imageGallery.length > 0)
+        ? product.imageGallery
+        : product?.imageUrl
+          ? [product.imageUrl]
+          : [],
+    [product?.imageGallery, product?.imageUrl]
+  );
   const [activeImage, setActiveImage] = useState(gallery[0] || '');
+
+  useEffect(() => {
+    setActiveImage(gallery[0] || '');
+  }, [gallery]);
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -55,7 +66,46 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       <Card>
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
           <div className="flex flex-col gap-3">
-            <div className="relative aspect-square w-full overflow-hidden rounded-lg border">
+            <div className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
+                asChild
+              >
+                <Link href="/products">
+                  <X className="h-5 w-5" />
+                  <span className="sr-only">Close product</span>
+                </Link>
+              </Button>
+              {gallery.length > 1 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
+                    onClick={() => {
+                      const idx = gallery.findIndex((g) => g === activeImage);
+                      const nextIdx = (idx - 1 + gallery.length) % gallery.length;
+                      setActiveImage(gallery[nextIdx]);
+                    }}
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
+                    onClick={() => {
+                      const idx = gallery.findIndex((g) => g === activeImage);
+                      const nextIdx = (idx + 1) % gallery.length;
+                      setActiveImage(gallery[nextIdx]);
+                    }}
+                  >
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </>
+              )}
               <Image
                 src={activeImage || product.imageUrl}
                 alt={product.name}
