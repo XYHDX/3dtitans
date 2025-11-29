@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { Badge } from '@/components/ui/badge';
 import { useProducts } from '@/hooks/use-data';
+import { cn } from '@/lib/utils';
 
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -22,6 +23,10 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const [quantity, setQuantity] = useState(1);
 
   const product = products?.find((p) => p.id === id) || null;
+  const gallery = (product?.imageGallery && product.imageGallery.length > 0)
+    ? product.imageGallery
+    : product?.imageUrl ? [product.imageUrl] : [];
+  const [activeImage, setActiveImage] = useState(gallery[0] || '');
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -49,14 +54,32 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <Card>
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
-          <div className="relative aspect-square">
-            <Image
-              src={product.imageUrl}
-              alt={product.name}
-              fill
-              className="object-cover rounded-l-lg"
-              data-ai-hint={product.imageHint}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="relative aspect-square w-full overflow-hidden rounded-lg border">
+              <Image
+                src={activeImage || product.imageUrl}
+                alt={product.name}
+                fill
+                className="object-cover"
+                data-ai-hint={product.imageHint}
+              />
+            </div>
+            {gallery.length > 1 && (
+              <div className="grid grid-cols-4 gap-2">
+                {gallery.map((img) => (
+                  <button
+                    key={img}
+                    onClick={() => setActiveImage(img)}
+                    className={cn(
+                      'relative aspect-square rounded-md overflow-hidden border',
+                      activeImage === img ? 'border-primary ring-2 ring-primary/50' : 'border-muted'
+                    )}
+                  >
+                    <Image src={img} alt={product.name} fill className="object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex flex-col p-8">
             <h1 className="font-headline text-4xl lg:text-5xl">{product.name}</h1>
