@@ -13,6 +13,7 @@ const allNavItems = [
   { href: '/admin/orders', icon: ShoppingBag, label: 'Orders', roles: ['admin', 'store-owner'] },
   { href: '/admin/pool', icon: Component, label: 'Pool', roles: ['admin', 'store-owner'] },
   { href: '/admin/uploads', icon: UploadCloud, label: 'Uploads', roles: ['admin'] },
+  { href: '/store-dashboard/uploads', icon: UploadCloud, label: 'Uploads', roles: ['store-owner'] },
   { href: '/admin/contact', icon: Mail, label: 'Contact', roles: ['admin'] },
   { href: '/admin/users', icon: Users, label: 'Users', roles: ['admin'] },
   { href: '/admin/newsletter', icon: Newspaper, label: 'Newsletter', roles: ['admin'] },
