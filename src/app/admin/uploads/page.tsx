@@ -72,7 +72,7 @@ export default function UploadsAdminPage() {
     );
   }
 
-  if (user.role !== 'admin' && user.role !== 'store-owner') {
+  if (user.role !== 'admin') {
     return (
       <div className="text-center py-16">
         <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
@@ -131,14 +131,14 @@ export default function UploadsAdminPage() {
                   <TableCell>
                     {user.role === 'admin' ? (
                       <Select
-                        onValueChange={(val) => assignUpload(upload.id, val || null)}
-                        defaultValue={upload.assignedOwnerId || ''}
+                        onValueChange={(val) => assignUpload(upload.id, val === 'unassigned' ? null : val)}
+                        defaultValue={upload.assignedOwnerId || 'unassigned'}
                       >
                         <SelectTrigger className="w-[220px]">
                           <SelectValue placeholder="Unassigned" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Unassigned</SelectItem>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
                           {storeOwners.map((owner) => (
                             <SelectItem key={owner.id} value={owner.id}>
                               {owner.name || owner.email}

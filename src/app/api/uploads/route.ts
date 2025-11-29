@@ -25,17 +25,11 @@ function mapUpload(upload: any) {
 export async function GET() {
   const session = await getServerSession(authOptions);
   const user = session?.user;
-  if (!user || (user.role !== 'admin' && user.role !== 'store-owner')) {
+  if (!user || user.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const where =
-    user.role === 'store-owner'
-      ? { assignedOwnerId: user.id }
-      : {};
-
   const uploads = await prisma.upload.findMany({
-    where,
     orderBy: { createdAt: 'desc' },
   });
 
