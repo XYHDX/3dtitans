@@ -18,6 +18,7 @@ function mapUpload(upload: any) {
     phoneNumber: upload.phoneNumber,
     createdAt: upload.createdAt,
     assignedOwnerId: upload.assignedOwnerId || null,
+    assignedOwnerEmail: upload.assignedOwnerEmail || null,
     status: upload.status,
   };
 }

@@ -28,6 +28,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     where: { id: params.id },
     data: {
       assignedOwnerId: assignedOwnerId || null,
+      assignedOwnerEmail: assignedOwnerId
+        ? (await prisma.user.findUnique({ where: { id: assignedOwnerId }, select: { email: true } }))?.email || null
+        : null,
       status: status || (assignedOwnerId ? 'assigned' : 'new'),
       assignedAt: assignedOwnerId ? new Date() : null,
     },
