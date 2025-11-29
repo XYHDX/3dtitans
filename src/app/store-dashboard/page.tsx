@@ -2,7 +2,7 @@
 'use client';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import type { Product, Order } from '@/lib/types';
-import { Package, ShoppingBag } from 'lucide-react';
+import { Package, ShoppingBag, UploadCloud } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
