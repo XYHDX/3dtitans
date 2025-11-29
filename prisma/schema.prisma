@@ -124,6 +124,7 @@ model OrderAssignment {
 
   owner   User   @relation("AssignmentOwner", fields: [ownerId], references: [id])
   ownerId String
+  ownerEmail String?
 
   @@unique([orderId, ownerId])
 }

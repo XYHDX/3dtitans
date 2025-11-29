@@ -59,7 +59,7 @@ export async function GET() {
       where: {
         OR: [
           { assignments: { some: { ownerId: user.id } } },
-          { assignments: { some: { owner: { email: user.email || '' } } } },
+          { assignments: { some: { ownerEmail: user.email || '' } } },
           ...(fallbackOwnerIds.length
             ? [{ assignments: { some: { ownerId: { in: fallbackOwnerIds } } } }]
             : []),

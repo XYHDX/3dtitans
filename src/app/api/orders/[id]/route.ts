@@ -72,8 +72,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     await prisma.orderAssignment.upsert({
       where: { orderId_ownerId: { orderId: params.id, ownerId: claimForOwnerId } },
-      update: {},
-      create: { orderId: params.id, ownerId: claimForOwnerId },
+      update: { ownerEmail: user.email || null },
+      create: { orderId: params.id, ownerId: claimForOwnerId, ownerEmail: user.email || null },
     });
     data.status = 'Pending';
   }
