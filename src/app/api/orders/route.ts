@@ -8,6 +8,7 @@ function mapOrder(order: any) {
     id: order.id,
     userId: order.userId || '',
     orderDate: order.createdAt,
+    updatedAt: order.updatedAt,
     totalAmount: Number(order.totalAmount),
     status: order.status as any,
     items: order.items.map((item: any) => ({

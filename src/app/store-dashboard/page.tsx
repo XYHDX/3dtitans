@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useSessionUser } from '@/hooks/use-session';
-import { useProducts, useOrders } from '@/hooks/use-data';
+import { useProducts, useOrders, useUploads } from '@/hooks/use-data';
 
 export default function StoreDashboardPage() {
     const { user } = useSessionUser();
@@ -17,8 +17,9 @@ export default function StoreDashboardPage() {
     const { data: assignedOrders, loading: assignedOrdersLoading } = useOrders(
         user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : undefined
     );
+    const { data: assignedUploads, loading: uploadsLoading } = useUploads();
 
-    const isLoading = productsLoading || assignedOrdersLoading;
+    const isLoading = productsLoading || assignedOrdersLoading || uploadsLoading;
 
     if (!user) {
         return (
@@ -85,6 +86,20 @@ export default function StoreDashboardPage() {
                         {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{assignedOrders?.length || 0}</div>}
                          <p className="text-xs text-muted-foreground">
                            Orders assigned to you. <Link href="/admin/orders" className="underline">View Orders</Link>
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            My Assigned Uploads
+                        </CardTitle>
+                        <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{assignedUploads?.length || 0}</div>}
+                         <p className="text-xs text-muted-foreground">
+                           Uploads assigned to you. <Link href="/store-dashboard/uploads" className="underline">View Uploads</Link>
                         </p>
                     </CardContent>
                 </Card>

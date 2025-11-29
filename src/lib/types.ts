@@ -35,6 +35,7 @@ export type Upload = {
   userDisplayName: string | null;
   phoneNumber: string;
   createdAt: Timestamp;
+  updatedAt?: Timestamp | Date | string;
 }
 
 export type SiteSettings = {
@@ -78,6 +79,7 @@ export type Order = {
     predictedFinishDate?: Timestamp | Date | string;
     isPrioritized?: boolean;
     assignedAdminIds: string[];
+    updatedAt?: Timestamp | Date | string;
 }
 
 export type UserProfile = {

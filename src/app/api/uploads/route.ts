@@ -17,6 +17,7 @@ function mapUpload(upload: any) {
     userDisplayName: upload.userDisplayName || '',
     phoneNumber: upload.phoneNumber,
     createdAt: upload.createdAt,
+    updatedAt: upload.updatedAt,
     assignedOwnerId: upload.assignedOwnerId || null,
     assignedOwnerEmail: upload.assignedOwnerEmail || null,
     status: upload.status,

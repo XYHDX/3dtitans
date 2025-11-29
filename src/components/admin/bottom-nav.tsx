@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { Home, Package, UploadCloud, Mail, Settings, Users, Newspaper, ShoppingBag, LayoutDashboard, Component, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSessionUser } from '@/hooks/use-session';
+import { useEffect, useMemo, useState } from 'react';
+import { useOrders, useUploads } from '@/hooks/use-data';
 
 const allNavItems = [
   { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Home', roles: ['admin'] },
@@ -23,6 +25,51 @@ const allNavItems = [
 export function AdminBottomNav() {
   const pathname = usePathname();
   const { user } = useSessionUser();
+  const { data: orders } = useOrders(
+    user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : undefined,
+    user?.role === 'store-owner' ? undefined : { skipFetch: true }
+  );
+  const { data: uploads } = useUploads(
+    user?.role === 'store-owner' ? undefined : { skipFetch: true }
+  );
+  const [lastViewed, setLastViewed] = useState<{ orders: number; uploads: number }>({ orders: 0, uploads: 0 });
+
+  useEffect(() => {
+    if (!user?.id || user.role !== 'store-owner') return;
+    const o = Number(localStorage.getItem(`orders-viewed-${user.id}`) || 0);
+    const u = Number(localStorage.getItem(`uploads-viewed-${user.id}`) || 0);
+    setLastViewed({ orders: o, uploads: u });
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user?.id || user.role !== 'store-owner') return;
+    if (pathname.startsWith('/admin/orders')) {
+      const now = Date.now();
+      localStorage.setItem(`orders-viewed-${user.id}`, String(now));
+      setLastViewed((prev) => ({ ...prev, orders: now }));
+    }
+    if (pathname.startsWith('/store-dashboard/uploads')) {
+      const now = Date.now();
+      localStorage.setItem(`uploads-viewed-${user.id}`, String(now));
+      setLastViewed((prev) => ({ ...prev, uploads: now }));
+    }
+  }, [pathname, user?.id, user?.role]);
+
+  const hasNewOrders = useMemo(() => {
+    if (!orders || !orders.length || user?.role !== 'store-owner') return false;
+    const latest = Math.max(
+      ...orders.map((o) => new Date((o as any).updatedAt || (o as any).orderDate || Date.now()).getTime())
+    );
+    return latest > lastViewed.orders;
+  }, [orders, lastViewed.orders, user?.role]);
+
+  const hasNewUploads = useMemo(() => {
+    if (!uploads || !uploads.length || user?.role !== 'store-owner') return false;
+    const latest = Math.max(
+      ...uploads.map((u) => new Date((u as any).updatedAt || (u as any).createdAt || Date.now()).getTime())
+    );
+    return latest > lastViewed.uploads;
+  }, [uploads, lastViewed.uploads, user?.role]);
   
   const navItems = user
     ? allNavItems.filter(item => user.role && item.roles.includes(user.role))
@@ -51,7 +98,15 @@ export function AdminBottomNav() {
               isActive ? 'text-primary bg-muted/50' : 'hover:bg-muted/50'
             )}
           >
-            <item.icon className="h-5 w-5" />
+            <div className="relative">
+              <item.icon className="h-5 w-5" />
+              {user?.role === 'store-owner' && item.href === '/admin/orders' && hasNewOrders && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+              )}
+              {user?.role === 'store-owner' && item.href === '/store-dashboard/uploads' && hasNewUploads && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </div>
             <span>{item.label}</span>
           </Link>
         );
