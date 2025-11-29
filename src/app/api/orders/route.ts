@@ -40,6 +40,13 @@ export async function GET() {
 
   const baseInclude = { items: true, assignments: true };
 
+  const fallbackOwnerIds: string[] = [];
+  if (user.email === 'owner@3dtitans.com') fallbackOwnerIds.push('owner-1');
+  if (user.email === 'aboude.murad@gmail.com') fallbackOwnerIds.push('owner-2');
+  if (user.email === 'admin@3dtitans.com' || user.email === 'yahyademeriah@gmail.com') {
+    fallbackOwnerIds.push('admin-1', 'admin-ya');
+  }
+
   let orders;
   if (user.role === 'admin') {
     orders = await prisma.order.findMany({
@@ -51,6 +58,9 @@ export async function GET() {
       where: {
         OR: [
           { assignments: { some: { ownerId: user.id } } },
+          ...(fallbackOwnerIds.length
+            ? [{ assignments: { some: { ownerId: { in: fallbackOwnerIds } } } }]
+            : []),
           { status: 'Pooled' },
         ],
       },
