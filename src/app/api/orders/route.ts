@@ -38,7 +38,7 @@ export async function GET() {
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const baseInclude = { items: true, assignments: true };
+  const baseInclude = { items: true, assignments: { include: { owner: true } } };
 
   const fallbackOwnerIds: string[] = [];
   if (user.email === 'owner@3dtitans.com') fallbackOwnerIds.push('owner-1');
@@ -58,6 +58,7 @@ export async function GET() {
       where: {
         OR: [
           { assignments: { some: { ownerId: user.id } } },
+          { assignments: { some: { owner: { email: user.email || '' } } } },
           ...(fallbackOwnerIds.length
             ? [{ assignments: { some: { ownerId: { in: fallbackOwnerIds } } } }]
             : []),
