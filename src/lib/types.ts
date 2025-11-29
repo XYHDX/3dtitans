@@ -12,6 +12,7 @@ export type Product = {
   rating?: number;
   reviewCount?: number;
   imageUrl: string;
+  imageGallery?: string[];
   imageHint?: string;
   has3dPreview?: boolean;
   createdAt?: Timestamp;

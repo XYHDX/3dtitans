@@ -17,6 +17,7 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const rating = product.rating || 4.5;
   const reviewCount = product.reviewCount || Math.floor(Math.random() * 200) + 1;
+  const primaryImage = product.imageGallery?.[0] || product.imageUrl || 'https://placehold.co/600x400';
   const { addToCart } = useCart();
   const { toast } = useToast();
 
@@ -35,7 +36,7 @@ export function ProductCard({ product }: ProductCardProps) {
       <CardHeader className="p-0 relative">
         <Link href={`/products/${product.id}`} className="block aspect-[4/3]">
           <Image
-            src={product.imageUrl || 'https://placehold.co/600x400'}
+            src={primaryImage}
             alt={product.name}
             fill
             className="object-cover transition-transform group-hover:scale-105"

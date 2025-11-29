@@ -4,6 +4,15 @@ import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
 function mapProduct(product: any) {
+  let gallery: string[] = [];
+  if (product.imageGallery) {
+    try {
+      gallery = JSON.parse(product.imageGallery) || [];
+    } catch (e) {
+      gallery = [];
+    }
+  }
+
   return {
     id: product.id,
     name: product.name,
@@ -12,6 +21,7 @@ function mapProduct(product: any) {
     description: product.description || '',
     tags: product.tags ? product.tags.split(',').filter(Boolean) : [],
     imageUrl: product.imageUrl,
+    imageGallery: gallery,
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
@@ -44,7 +54,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview } = body;
+    const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery } = body;
 
     if (!name || !category || !price || !imageUrl) {
       return NextResponse.json({ error: 'Name, category, price, and imageUrl are required' }, { status: 400 });
@@ -60,6 +70,7 @@ export async function POST(req: Request) {
         imageUrl,
         imageHint: imageHint || '',
         has3dPreview: !!has3dPreview,
+        imageGallery: Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : JSON.stringify([imageUrl]),
         uploaderId: user.id,
         uploaderName: user.name || user.email || 'Uploader',
       },

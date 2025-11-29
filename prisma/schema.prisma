@@ -39,6 +39,7 @@ model Product {
   imageUrl     String
   imageHint    String?
   uploaderName String?
+  imageGallery String?
   rating       Float     @default(0)
   reviewCount  Int       @default(0)
   has3dPreview Boolean   @default(false)

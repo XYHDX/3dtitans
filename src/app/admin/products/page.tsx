@@ -49,18 +49,17 @@ const productSchema = z.object({
   category: z.string().min(2, 'Category is required'),
   description: z.string().optional(),
   tags: z.string().optional(),
-  imageFile: z
+  imageFiles: z
     .any()
-    .refine((files) => files?.length === 1, 'Image is required')
-    .refine(
-      (files) => !files?.[0] || files[0].size <= 5 * 1024 * 1024,
-      'Max file size is 5MB'
-    )
+    .refine((files) => files?.length >= 1, 'At least one image is required')
+    .refine((files) => !files || files.length <= 3, 'You can upload up to 3 images')
     .refine(
       (files) =>
-        !files?.[0] ||
-        ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(files[0].type),
-      'Only JPG, PNG, or WEBP images are allowed'
+        !files ||
+        Array.from(files).every(
+          (f: File) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
+        ),
+      'Images must be JPG/PNG/WEBP and under 5MB each'
     ),
 });
 
@@ -187,23 +186,30 @@ function ProductsManager() {
     
     try {
       setUploadingImage(true);
-      const file = data.imageFile[0] as File;
-      const fileExt = file.name.split('.').pop();
-      const filePath = `products/${user.id || user.uid}/${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-      if (uploadError) {
-        throw uploadError;
+      const files: File[] = Array.from(data.imageFiles);
+      const uploadResults: string[] = [];
+
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `products/${user.id || user.uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+        if (uploadError) {
+          throw uploadError;
+        }
+        const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+        const imageUrl = publicUrlData?.publicUrl;
+        if (!imageUrl) {
+          throw new Error('Could not get public URL for image');
+        }
+        uploadResults.push(imageUrl);
       }
-      const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
-      const imageUrl = publicUrlData?.publicUrl;
-      if (!imageUrl) {
-        throw new Error('Could not get public URL for image');
-      }
+
+      const imageUrl = uploadResults[0];
 
       const productData = {
         name: data.name,
@@ -212,6 +218,7 @@ function ProductsManager() {
         description: data.description || '',
         tags: (data.tags || '').split(',').map(tag => tag.trim()).filter(Boolean),
         imageUrl,
+        imageGallery: uploadResults,
         uploaderId: user.id || user.uid,
         uploaderName: user.displayName || 'Unnamed User',
         rating: 0,
@@ -285,9 +292,9 @@ function ProductsManager() {
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-image">Product Image (max 5MB)</Label>
-                <Input id="add-product-image" type="file" accept="image/jpeg,image/png,image/webp" {...register('imageFile')} />
-                {errors.imageFile && <p className="text-xs text-destructive">{errors.imageFile.message as string}</p>}
+                <Label htmlFor="add-product-image">Product Images (up to 3, max 5MB each)</Label>
+                <Input id="add-product-image" type="file" multiple accept="image/jpeg,image/png,image/webp" {...register('imageFiles')} />
+                {errors.imageFiles && <p className="text-xs text-destructive">{errors.imageFiles.message as string}</p>}
               </div>
               <Button type="submit" disabled={loading || productsLoading || uploadingImage}>
                 {loading ? 'Adding...' : uploadingImage ? 'Uploading...' : 'Add Product'}
