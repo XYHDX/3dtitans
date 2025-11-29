@@ -13,6 +13,7 @@ import { Download, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUsers } from '@/hooks/use-session';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,7 +63,20 @@ export default function UploadsAdminPage() {
   const { user } = useSessionUser();
   const { data: uploads, loading: uploadsLoading, deleteUpload, assignUpload } = useUploads();
   const { data: users } = useUsers();
-  const storeOwners = (users || []).filter((u) => u.role === 'store-owner' || u.role === 'admin');
+  const storeOwners = useMemo(
+    () => (users || []).filter((u) => u.role === 'store-owner'),
+    [users]
+  );
+  const [selection, setSelection] = useState<Record<string, string>>({});
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const defaults: Record<string, string> = {};
+    (uploads || []).forEach((u) => {
+      defaults[u.id] = u.assignedOwnerId || 'unassigned';
+    });
+    setSelection(defaults);
+  }, [uploads]);
 
   if (!user) {
     return (
@@ -129,10 +143,12 @@ export default function UploadsAdminPage() {
                       : 'N/A'}
                   </TableCell>
                   <TableCell>
-                    {user.role === 'admin' ? (
+                    <div className="flex items-center gap-2">
                       <Select
-                        onValueChange={(val) => assignUpload(upload.id, val === 'unassigned' ? null : val)}
-                        defaultValue={upload.assignedOwnerId || 'unassigned'}
+                        onValueChange={(val) =>
+                          setSelection((prev) => ({ ...prev, [upload.id]: val }))
+                        }
+                        value={selection[upload.id] ?? upload.assignedOwnerId ?? 'unassigned'}
                       >
                         <SelectTrigger className="w-[220px]">
                           <SelectValue placeholder="Unassigned" />
@@ -146,9 +162,23 @@ export default function UploadsAdminPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    ) : (
-                      <span>{upload.assignedOwnerId ? 'Assigned' : 'Unassigned'}</span>
-                    )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={selection[upload.id] === (upload.assignedOwnerId || 'unassigned')}
+                        onClick={async () => {
+                          const val = selection[upload.id] ?? 'unassigned';
+                          const ok = await assignUpload(upload.id, val === 'unassigned' ? null : val);
+                          if (ok) {
+                            toast({ title: 'Assignment saved' });
+                          } else {
+                            toast({ variant: 'destructive', title: 'Failed to assign upload' });
+                          }
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end items-center">
