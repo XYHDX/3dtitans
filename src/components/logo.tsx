@@ -1,11 +1,13 @@
 import type { SVGProps } from 'react';
+import { cn } from '@/lib/utils';
 
 export function Logo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 100 20"
-      className="h-6 w-auto"
+      dir="ltr"
+      className={cn('h-6 w-auto text-accent', props.className)}
       aria-label="3D Titans logo"
       {...props}
     >
@@ -14,7 +16,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
         y="15"
         fontFamily="'Bebas Neue', sans-serif"
         fontSize="20"
-        fill="hsl(var(--accent))"
+        fill="currentColor"
         letterSpacing="1"
       >
         3D TITANS
