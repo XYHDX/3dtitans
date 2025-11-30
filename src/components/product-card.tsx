@@ -9,6 +9,8 @@ import { Star, Box, ShoppingCart } from 'lucide-react';
 import { Button } from './ui/button';
 import { useCart } from '@/hooks/use-cart';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from './language-provider';
+import { useSessionUser } from '@/hooks/use-session';
 
 interface ProductCardProps {
   product: Product;
@@ -20,14 +22,24 @@ export function ProductCard({ product }: ProductCardProps) {
   const primaryImage = product.imageGallery?.[0] || product.imageUrl || 'https://placehold.co/600x400';
   const { addToCart } = useCart();
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const { user } = useSessionUser();
 
   const handleAddToCart = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!user) {
+      toast({
+        variant: 'destructive',
+        title: t('auth.loginToBuyTitle'),
+        description: t('auth.loginToBuyDesc'),
+      });
+      return;
+    }
     addToCart(product, 1);
     toast({
-      title: 'Added to Cart',
-      description: `${product.name} has been added to your cart.`,
+      title: t('productCard.addedTitle'),
+      description: t('productCard.addedDescription', '', { name: product.name }),
     });
   };
 
@@ -46,7 +58,7 @@ export function ProductCard({ product }: ProductCardProps) {
         {product.has3dPreview && (
           <Badge variant="secondary" className="absolute top-3 right-3">
             <Box className="h-3 w-3 mr-1.5" />
-            3D Preview
+            {t('productCard.preview')}
           </Badge>
         )}
       </CardHeader>
@@ -61,7 +73,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <Star className="h-4 w-4 mr-1 text-accent fill-accent" />
           <span>{rating.toFixed(1)}</span>
           <span className="mx-1">·</span>
-          <span>{reviewCount} reviews</span>
+          <span>{t('productCard.reviews', '', { count: reviewCount })}</span>
         </div>
       </CardContent>
       <CardFooter className="p-4 pt-0">
@@ -69,7 +81,7 @@ export function ProductCard({ product }: ProductCardProps) {
             <p className="text-lg font-semibold">${product.price.toFixed(2)}</p>
             <Button variant="outline" size="icon" onClick={handleAddToCart}>
                 <ShoppingCart className="h-4 w-4" />
-                <span className="sr-only">Add to cart</span>
+                <span className="sr-only">{t('productCard.addSr')}</span>
             </Button>
         </div>
       </CardFooter>

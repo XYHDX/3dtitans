@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { ScrollArea } from './ui/scroll-area';
 import { Trash2, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from './language-provider';
+import { useSessionUser } from '@/hooks/use-session';
 
 interface CartSheetProps {
   open: boolean;
@@ -15,12 +17,14 @@ interface CartSheetProps {
 
 export function CartSheet({ open, onOpenChange }: CartSheetProps) {
   const { cart, removeFromCart, updateQuantity, total, clearCart } = useCart();
+  const { t } = useTranslation();
+  const { user } = useSessionUser();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col">
         <SheetHeader>
-          <SheetTitle>Shopping Cart</SheetTitle>
+          <SheetTitle>{t('cart.title')}</SheetTitle>
         </SheetHeader>
         {cart.length > 0 ? (
           <>
@@ -69,14 +73,20 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
             <SheetFooter className="mt-auto pt-6 border-t">
                 <div className='w-full space-y-4'>
                     <div className="flex justify-between items-center font-bold text-xl">
-                        <span>Total:</span>
+                        <span>{t('cart.total')}</span>
                         <span>${total.toFixed(2)}</span>
                     </div>
-                    <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>
-                        <Link href="/checkout">Proceed to Checkout</Link>
-                    </Button>
+                    {user ? (
+                      <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>
+                          <Link href="/checkout">{t('cart.checkout')}</Link>
+                      </Button>
+                    ) : (
+                      <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>
+                          <Link href="/login">{t('cart.checkoutGuest')}</Link>
+                      </Button>
+                    )}
                     <Button variant="outline" className="w-full" onClick={clearCart}>
-                        Clear Cart
+                        {t('cart.clear')}
                     </Button>
                 </div>
             </SheetFooter>
@@ -84,10 +94,10 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
         ) : (
           <div className="flex-grow flex flex-col items-center justify-center text-center">
             <ShoppingCart className="h-16 w-16 text-muted-foreground mb-4" />
-            <p className="text-lg font-semibold">Your cart is empty</p>
-            <p className="text-sm text-muted-foreground">Add some models to get started.</p>
+            <p className="text-lg font-semibold">{t('cart.emptyTitle')}</p>
+            <p className="text-sm text-muted-foreground">{t('cart.emptySubtitle')}</p>
             <Button className="mt-6" asChild onClick={() => onOpenChange(false)}>
-                <Link href="/products">Explore Models</Link>
+                <Link href="/products">{t('cart.explore')}</Link>
             </Button>
           </div>
         )}

@@ -9,6 +9,7 @@ import { Instagram, Facebook, type LucideIcon } from 'lucide-react';
 import type { SiteSettings } from '@/lib/types';
 import { useSiteSettings } from '@/hooks/use-data';
 import { useNewsletterSubscriptions } from '@/hooks/use-data';
+import { useTranslation } from './language-provider';
 
 const footerLinks = {
   Marketplace: [
@@ -35,6 +36,7 @@ export function Footer() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
   const socialLinks = [
     { href: settings?.facebookUrl, icon: Facebook, label: 'Facebook' },
     { href: settings?.instagramUrl, icon: Instagram, label: 'Instagram' },
@@ -77,7 +79,7 @@ export function Footer() {
               <Logo />
             </Link>
             <p className="text-muted-foreground text-sm max-w-sm mb-4">
-              {settings?.footerBlurb || 'Your ultimate destination for high-quality, game-ready 3D models and assets.'}
+              {settings?.footerBlurb || t('footer.blurbDefault')}
             </p>
             <form className="flex gap-2 mb-6" onSubmit={handleSubscribe}>
               <Input 
@@ -123,11 +125,11 @@ export function Footer() {
       </div>
       <div className="bg-background">
         <div className="container mx-auto flex flex-col md:flex-row items-center justify-between py-4 text-sm text-muted-foreground px-4 sm:px-6 lg:px-8">
-          <p>&copy; {new Date().getFullYear()} 3D Titans. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} 3D Titans. {t('footer.copyright')}</p>
           <div className="flex gap-4 mt-4 md:mt-0">
-            <Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-foreground">Terms of Service</Link>
-            <Link href="/debug/products" className="hover:text-foreground">Debug</Link>
+            <Link href="/privacy" className="hover:text-foreground">{t('footer.privacy')}</Link>
+            <Link href="/terms" className="hover:text-foreground">{t('footer.terms')}</Link>
+            <Link href="/debug/products" className="hover:text-foreground">{t('footer.debug')}</Link>
           </div>
         </div>
       </div>

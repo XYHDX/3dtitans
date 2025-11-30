@@ -9,27 +9,25 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import type { Product } from '@/lib/types';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useOrders } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
 
-const addressSchema = z.object({
-  fullName: z.string().min(3, "Full name is required."),
-  email: z.string().email("A valid email address is required."),
-  phoneNumber: z.string().min(10, "A valid phone number is required."),
-  addressLine1: z.string().min(5, "Address is required."),
-  city: z.string().min(2, "City is required."),
-  postalCode: z.string().min(4, "Postal code is required."),
-  country: z.string().min(2, "Country is required."),
-});
-
-type AddressFormData = z.infer<typeof addressSchema>;
+type AddressFormData = {
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  addressLine1: string;
+  city: string;
+  postalCode: string;
+  country: string;
+};
 
 
 export default function CheckoutPage() {
@@ -40,6 +38,21 @@ export default function CheckoutPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
+
+  const addressSchema = useMemo(
+    () =>
+      z.object({
+        fullName: z.string().min(3, t('checkout.errors.fullName')),
+        email: z.string().email(t('checkout.errors.email')),
+        phoneNumber: z.string().min(10, t('checkout.errors.phone')),
+        addressLine1: z.string().min(5, t('checkout.errors.address')),
+        city: z.string().min(2, t('checkout.errors.city')),
+        postalCode: z.string().min(4, t('checkout.errors.postalCode')),
+        country: z.string().min(2, t('checkout.errors.country')),
+      }),
+    [t]
+  );
 
   const { register, handleSubmit, formState: { errors }, setValue } = useForm<AddressFormData>({
     resolver: zodResolver(addressSchema),
@@ -54,14 +67,19 @@ export default function CheckoutPage() {
 
   const handlePlaceOrder = async (addressData: AddressFormData) => {
     if (cart.length === 0) {
-      toast({ variant: 'destructive', title: 'Empty Cart', description: 'Cannot place an order with an empty cart.' });
+      toast({ variant: 'destructive', title: t('checkout.toastEmptyTitle'), description: t('checkout.toastEmptyDesc') });
+      return;
+    }
+    if (!user) {
+      toast({ variant: 'destructive', title: t('checkout.loginRequiredTitle'), description: t('checkout.loginRequiredDesc') });
+      router.push('/login');
       return;
     }
 
     setLoading(true);
 
     try {
-      const userId = user ? user.id || user.uid : `guest_${Date.now()}`;
+      const userId = user.id || user.uid;
       const productUploaders =
         cart
           .map((item) => products?.find((p) => p.id === item.id)?.uploaderId)
@@ -99,8 +117,8 @@ export default function CheckoutPage() {
       if (!result.ok) throw new Error('Failed to place order');
 
       toast({
-        title: 'Order Placed!',
-        description: 'Thank you for your purchase. We have sent a confirmation to your email.',
+        title: t('checkout.toastSuccessTitle'),
+        description: t('checkout.toastSuccessDesc'),
       });
       clearCart();
       router.push('/');
@@ -109,13 +127,27 @@ export default function CheckoutPage() {
       console.error("Failed to place order:", error);
       toast({
         variant: 'destructive',
-        title: 'Order Failed',
-        description: (error as Error).message || 'An unexpected error occurred.',
+        title: t('checkout.toastErrorTitle'),
+        description: (error as Error).message || t('checkout.toastErrorDesc'),
       });
     } finally {
         setLoading(false);
     }
   };
+
+  if (!user) {
+    return (
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-xl mx-auto text-center space-y-4">
+          <h1 className="font-headline text-4xl">{t('checkout.loginRequiredTitle')}</h1>
+          <p className="text-muted-foreground">{t('checkout.loginRequiredDesc')}</p>
+          <Button asChild size="lg">
+            <Link href="/login">{t('checkout.loginCta')}</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -123,45 +155,45 @@ export default function CheckoutPage() {
         <div>
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl font-headline">Shipping & Contact Information</CardTitle>
-              <CardDescription>Enter your details to complete the order.</CardDescription>
+              <CardTitle className="text-2xl font-headline">{t('checkout.formTitle')}</CardTitle>
+              <CardDescription>{t('checkout.formSubtitle')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form id="shipping-form" onSubmit={handleSubmit(handlePlaceOrder)} className="grid gap-4">
                  <div className="grid gap-2">
-                    <Label htmlFor="fullName">Full Name</Label>
+                    <Label htmlFor="fullName">{t('checkout.labels.fullName')}</Label>
                     <Input id="fullName" {...register('fullName')} />
                     {errors.fullName && <p className="text-xs text-destructive">{errors.fullName.message}</p>}
                   </div>
                    <div className="grid gap-2">
-                    <Label htmlFor="email">Email Address</Label>
+                    <Label htmlFor="email">{t('checkout.labels.email')}</Label>
                     <Input id="email" type="email" {...register('email')} />
                     {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
                   </div>
                    <div className="grid gap-2">
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
+                    <Label htmlFor="phoneNumber">{t('checkout.labels.phone')}</Label>
                     <Input id="phoneNumber" type="tel" {...register('phoneNumber')} />
                     {errors.phoneNumber && <p className="text-xs text-destructive">{errors.phoneNumber.message}</p>}
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="addressLine1">Address</Label>
+                    <Label htmlFor="addressLine1">{t('checkout.labels.address')}</Label>
                     <Input id="addressLine1" {...register('addressLine1')} />
                     {errors.addressLine1 && <p className="text-xs text-destructive">{errors.addressLine1.message}</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                        <Label htmlFor="city">City</Label>
+                        <Label htmlFor="city">{t('checkout.labels.city')}</Label>
                         <Input id="city" {...register('city')} />
                         {errors.city && <p className="text-xs text-destructive">{errors.city.message}</p>}
                     </div>
                     <div className="grid gap-2">
-                        <Label htmlFor="postalCode">Postal Code</Label>
+                        <Label htmlFor="postalCode">{t('checkout.labels.postalCode')}</Label>
                         <Input id="postalCode" {...register('postalCode')} />
                         {errors.postalCode && <p className="text-xs text-destructive">{errors.postalCode.message}</p>}
                     </div>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="country">Country</Label>
+                    <Label htmlFor="country">{t('checkout.labels.country')}</Label>
                     <Input id="country" {...register('country')} />
                     {errors.country && <p className="text-xs text-destructive">{errors.country.message}</p>}
                   </div>
@@ -172,15 +204,15 @@ export default function CheckoutPage() {
         <div>
             <Card className="sticky top-24">
               <CardHeader>
-                <CardTitle className="text-2xl font-headline">Order Summary</CardTitle>
-                <CardDescription>Review your items before placing the order.</CardDescription>
+                <CardTitle className="text-2xl font-headline">{t('checkout.summaryTitle')}</CardTitle>
+                <CardDescription>{t('checkout.summarySubtitle')}</CardDescription>
               </CardHeader>
               <CardContent>
                 {cart.length === 0 ? (
                   <div className="text-center py-12">
-                    <p className="text-muted-foreground mb-4">Your cart is empty.</p>
+                    <p className="text-muted-foreground mb-4">{t('checkout.emptyTitle')}</p>
                     <Button asChild>
-                      <Link href="/products">Continue Shopping</Link>
+                      <Link href="/products">{t('checkout.emptyCta')}</Link>
                     </Button>
                   </div>
                 ) : (
@@ -197,7 +229,7 @@ export default function CheckoutPage() {
                     ))}
                     <Separator />
                     <div className="flex justify-between items-center text-lg font-semibold">
-                      <p>Total</p>
+                      <p>{t('cart.total')}</p>
                       <p>${total.toFixed(2)}</p>
                     </div>
                   </div>
@@ -206,7 +238,7 @@ export default function CheckoutPage() {
               {cart.length > 0 && (
                 <CardFooter>
                   <Button size="lg" className="w-full" type="submit" form="shipping-form" disabled={loading}>
-                    {loading ? 'Placing Order...' : 'Place Order'}
+                    {loading ? t('checkout.placing') : t('checkout.placeOrder')}
                   </Button>
                 </CardFooter>
               )}

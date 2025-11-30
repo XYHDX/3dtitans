@@ -14,12 +14,16 @@ import { Badge } from '@/components/ui/badge';
 import { useProducts } from '@/hooks/use-data';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useTranslation } from '@/components/language-provider';
+import { useSessionUser } from '@/hooks/use-session';
 
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: products, loading } = useProducts();
   const { toast } = useToast();
-  const { addToCart, getItemQuantity, updateQuantity } = useCart();
+  const { addToCart, getItemQuantity } = useCart();
+  const { t } = useTranslation();
+  const { user } = useSessionUser();
   
   const [quantity, setQuantity] = useState(1);
 
@@ -41,12 +45,20 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
   const handleAddToCart = () => {
     if (!product) return;
+    if (!user) {
+      toast({
+        variant: 'destructive',
+        title: t('auth.loginToBuyTitle'),
+        description: t('auth.loginToBuyDesc'),
+      });
+      return;
+    }
 
     addToCart(product, quantity);
     
     toast({
-      title: "Added to Cart!",
-      description: `${quantity} x ${product.name} added to your cart.`,
+      title: t('productCard.addedTitle'),
+      description: t('productCard.addedDescription', '', { name: `${quantity} x ${product.name}` }),
     });
     setQuantity(1); // Reset quantity after adding
   };
@@ -59,6 +71,8 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     return notFound();
   }
 
+  const rating = product.rating || 4.5;
+  const reviewCount = product.reviewCount || 117;
   const quantityInCart = getItemQuantity(product.id);
 
   return (
@@ -75,7 +89,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               >
                 <Link href="/products">
                   <X className="h-5 w-5" />
-                  <span className="sr-only">Close product</span>
+                  <span className="sr-only">{t('productDetail.close')}</span>
                 </Link>
               </Button>
               {gallery.length > 1 && (
@@ -143,18 +157,20 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                 <Star className="w-5 h-5 fill-current" />
                 <Star className="w-5 h-5 fill-muted stroke-accent" />
               </div>
-              <span className="ml-2 text-muted-foreground text-sm">4.5 (117 reviews)</span>
+              <span className="ml-2 text-muted-foreground text-sm">
+                {t('productDetail.rating', '', { rating: rating.toFixed(1), count: reviewCount })}
+              </span>
             </div>
 
             <Separator className="my-6" />
 
             <p className="text-muted-foreground text-base leading-relaxed">
-              {product.description || 'No description provided.'}
+              {product.description || t('productDetail.noDescription')}
             </p>
             
             {product.tags && product.tags.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="font-semibold text-foreground text-sm">Tags:</span> 
+                <span className="font-semibold text-foreground text-sm">{t('productDetail.tags')}</span> 
                 {product.tags.map((tag) => (
                     <Badge key={tag} variant="secondary">{tag}</Badge>
                 ))}
@@ -174,20 +190,20 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                       <Minus className="h-4 w-4" />
                     </Button>
                     <span className="text-xl font-bold w-10 text-center">{quantity}</span>
-                    <Button variant="outline" size="icon" onClick={() => setQuantity(q => q + 1)}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <Button size="lg" onClick={handleAddToCart}>
-                    <ShoppingCart className="mr-2 h-5 w-5" />
-                    Add to Cart
+                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => q + 1)}>
+                    <Plus className="h-4 w-4" />
                   </Button>
+                </div>
+                <Button size="lg" onClick={handleAddToCart}>
+                  <ShoppingCart className="mr-2 h-5 w-5" />
+                  {t('productDetail.addToCart')}
+                </Button>
               </div>
 
             </div>
              {quantityInCart > 0 && (
                 <p className="text-sm text-center mt-4 text-muted-foreground">
-                  You have {quantityInCart} of this item in your cart.
+                  {t('productDetail.inCart', '', { count: quantityInCart })}
                 </p>
               )}
           </div>

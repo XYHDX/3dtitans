@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { useSessionUser } from '@/hooks/use-session';
 import { useUploads } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
 
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -29,7 +29,7 @@ export default function UploadPage() {
   const { toast } = useToast();
   const { user } = useSessionUser();
   const { addUpload } = useUploads({ skipFetch: true });
-  const router = useRouter();
+  const { t } = useTranslation();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -42,13 +42,13 @@ export default function UploadPage() {
     }
 
     if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File size cannot exceed ${MAX_FILE_SIZE_MB}MB.`);
+      setError(t('upload.toastTooLargeDesc', '', { size: MAX_FILE_SIZE_MB }));
       setFile(null);
       setPreviewName('');
       toast({
         variant: 'destructive',
-        title: 'File too large',
-        description: `Please select a file smaller than ${MAX_FILE_SIZE_MB}MB.`,
+        title: t('upload.toastTooLargeTitle'),
+        description: t('upload.toastTooLargeDesc', '', { size: MAX_FILE_SIZE_MB }),
       });
       event.target.value = ''; // Clear the input
       return;
@@ -73,8 +73,8 @@ export default function UploadPage() {
     if (!file || !user) {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: !file ? 'Please select a file to upload.' : 'You must be logged in to upload a file.',
+        title: t('upload.toastErrorTitle'),
+        description: !file ? t('upload.toastErrorNoFile') : t('upload.toastErrorLogin'),
       });
       return;
     }
@@ -102,8 +102,8 @@ export default function UploadPage() {
       }
 
       toast({
-        title: 'Upload successful!',
-        description: `File "${file.name}" has been submitted.`,
+        title: t('upload.toastSuccessTitle'),
+        description: t('upload.toastSuccessDesc', '', { file: file.name }),
       });
 
       // Reset form
@@ -121,8 +121,8 @@ export default function UploadPage() {
         setError(`File upload failed: ${errorMessage}`);
         toast({
            variant: 'destructive',
-           title: 'Upload Failed',
-           description: `Error: ${errorMessage}. Please check the console for more details.`,
+           title: t('upload.toastFailTitle'),
+           description: t('upload.toastFailDesc', '', { message: errorMessage }),
        });
     } finally {
         setLoading(false);
@@ -133,10 +133,10 @@ export default function UploadPage() {
       return (
           <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl mx-auto text-center">
-                <h2 className="text-2xl font-bold">Please Log In</h2>
-                <p className="text-muted-foreground mt-2">You need to be logged in to upload a model for a quote.</p>
+                <h2 className="text-2xl font-bold">{t('upload.requireLoginTitle')}</h2>
+                <p className="text-muted-foreground mt-2">{t('upload.requireLoginDesc')}</p>
                 <Button asChild className="mt-4">
-                    <Link href="/login">Login</Link>
+                    <Link href="/login">{t('upload.requireLoginCta')}</Link>
                 </Button>
             </div>
           </div>
@@ -148,16 +148,16 @@ export default function UploadPage() {
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl font-headline">Upload Your Model</CardTitle>
+            <CardTitle className="text-4xl font-headline">{t('upload.title')}</CardTitle>
             <CardDescription>
-              Have a 3D model you want us to print? Upload it here! We accept .STL, .OBJ, and .FBX files.
+              {t('upload.subtitle')}
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="grid gap-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="grid gap-2">
-                  <Label htmlFor="model-name">Model Name</Label>
+                  <Label htmlFor="model-name">{t('upload.modelName')}</Label>
                   <Input 
                     id="model-name" 
                     placeholder="e.g., 'Spaceship v3'" 
@@ -167,7 +167,7 @@ export default function UploadPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="phone-number">Phone Number</Label>
+                  <Label htmlFor="phone-number">{t('upload.phone')}</Label>
                   <Input 
                     id="phone-number" 
                     type="tel"
@@ -180,7 +180,7 @@ export default function UploadPage() {
               </div>
 
               <div className="grid gap-2">
-                <Label>3D Model File</Label>
+                <Label>{t('upload.file')}</Label>
                 <div className="relative flex items-center justify-center w-full">
                   <Label
                     htmlFor="file-upload"
@@ -189,9 +189,9 @@ export default function UploadPage() {
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <UploadCloud className="w-10 h-10 mb-3 text-muted-foreground" />
                       <p className="mb-2 text-sm text-muted-foreground">
-                        <span className="font-semibold">Click to upload</span> or drag and drop
+                        <span className="font-semibold">{t('upload.fileCta')}</span> {t('upload.fileDrop')}
                       </p>
-                      <p className="text-xs text-muted-foreground">.STL, .OBJ, or .FBX (MAX. ${MAX_FILE_SIZE_MB}MB)</p>
+                      <p className="text-xs text-muted-foreground">{t('upload.fileTypes', '', { size: MAX_FILE_SIZE_MB })}</p>
                     </div>
                     <Input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".stl,.obj,.fbx" />
                   </Label>
@@ -211,7 +211,7 @@ export default function UploadPage() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="notes">Printing Notes</Label>
+                <Label htmlFor="notes">{t('upload.notes')}</Label>
                 <Textarea 
                   id="notes" 
                   placeholder="Any special instructions? (e.g., material, color, scale)"
@@ -222,7 +222,7 @@ export default function UploadPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full" disabled={!file || !!error || loading}>
-                {loading ? 'Uploading...' : 'Get a Quote'}
+                {loading ? t('upload.submitting') : t('upload.submit')}
               </Button>
             </CardFooter>
           </form>

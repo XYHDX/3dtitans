@@ -12,7 +12,7 @@ import {
 } from './ui/sheet';
 import { Menu, ShoppingCart, LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react';
 import { Logo } from './logo';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { CartSheet } from './cart-sheet';
 import { Badge } from './ui/badge';
@@ -20,13 +20,8 @@ import { useLogin, useSessionUser } from '@/hooks/use-session';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from './ui/dropdown-menu';
 import { useRouter } from 'next/navigation';
-
-
-const navLinks = [
-  { href: '/products', label: 'Products' },
-  { href: '/upload', label: 'Upload' },
-  { href: '/about', label: 'About' },
-];
+import { useTranslation } from './language-provider';
+import { LanguageToggle } from './language-toggle';
 
 export function Header() {
   const [isSheetOpen, setSheetOpen] = useState(false);
@@ -35,6 +30,15 @@ export function Header() {
   const { user } = useSessionUser();
   const { logout } = useLogin();
   const router = useRouter();
+  const { t } = useTranslation();
+  const navLinks = useMemo(
+    () => [
+      { href: '/products', label: t('nav.products') },
+      { href: '/upload', label: t('nav.upload') },
+      { href: '/about', label: t('nav.about') },
+    ],
+    [t]
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -56,7 +60,7 @@ export function Header() {
         {cartItemCount > 0 && (
           <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 justify-center p-0">{cartItemCount}</Badge>
         )}
-        <span className="sr-only">Open Cart</span>
+        <span className="sr-only">{t('nav.openCart')}</span>
       </Button>
       
       <DropdownMenu>
@@ -80,7 +84,7 @@ export function Header() {
             <DropdownMenuItem asChild>
               <Link href="/admin/dashboard">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
-                Admin Dashboard
+                {t('nav.admin')}
               </Link>
             </DropdownMenuItem>
           )}
@@ -88,14 +92,14 @@ export function Header() {
              <DropdownMenuItem asChild>
               <Link href="/store-dashboard">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
-                Store Dashboard
+                {t('nav.store')}
               </Link>
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
-            <span>Log out</span>
+            <span>{t('nav.logout')}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -108,13 +112,13 @@ export function Header() {
         {cartItemCount > 0 && (
           <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 justify-center p-0">{cartItemCount}</Badge>
         )}
-        <span className="sr-only">Open Cart</span>
+        <span className="sr-only">{t('nav.openCart')}</span>
       </Button>
       <Button variant="ghost" asChild>
-        <Link href="/login">Login</Link>
+        <Link href="/login">{t('nav.login')}</Link>
       </Button>
       <Button asChild>
-          <Link href="/signup">Sign Up</Link>
+          <Link href="/signup">{t('nav.signup')}</Link>
       </Button>
      </div>
   );
@@ -150,6 +154,9 @@ export function Header() {
                     </Link>
                     ))}
                 </nav>
+                <div className="mt-8">
+                  <LanguageToggle />
+                </div>
                 </SheetContent>
             </Sheet>
 
@@ -180,7 +187,10 @@ export function Header() {
         </div>
 
         {/* Auth Buttons */}
-        <div className="flex items-center justify-end flex-1 md:flex-initial">
+        <div className="flex items-center justify-end flex-1 md:flex-initial gap-2">
+          <div className="hidden md:flex">
+            <LanguageToggle />
+          </div>
           {authContent}
         </div>
         

@@ -1,7 +1,11 @@
+'use client';
+
 import Link from 'next/link';
 import { Button } from '../ui/button';
+import { useTranslation } from '../language-provider';
 
 export function PrintOnDemand() {
+  const { t } = useTranslation();
   return (
     <section className="py-16 md:py-24 bg-card w-full my-16 rounded-lg overflow-hidden">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-12 items-center">
@@ -38,16 +42,14 @@ export function PrintOnDemand() {
         </div>
         <div className="text-center md:text-left">
           <h2 className="font-headline text-4xl md:text-5xl tracking-wide">
-            Print on demand
+            {t('print.title')}
           </h2>
-          <p className="mt-2 text-lg text-primary font-semibold">Your designs, our expertise</p>
+          <p className="mt-2 text-lg text-primary font-semibold">{t('print.subtitle')}</p>
           <p className="mt-4 text-muted-foreground max-w-xl mx-auto md:mx-0">
-            Have a custom model you need printed? Our state-of-the-art 3D
-            printing service brings your digital creations into the physical
-            world with precision and quality.
+            {t('print.body')}
           </p>
           <Button size="lg" className="mt-6" asChild>
-            <Link href="/upload">Upload your model</Link>
+            <Link href="/upload">{t('print.cta')}</Link>
           </Button>
         </div>
       </div>

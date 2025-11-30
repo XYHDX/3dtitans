@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteSettings } from "@/hooks/use-data";
 import { useContactSubmissions } from "@/hooks/use-data";
+import { useTranslation } from "@/components/language-provider";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -26,13 +27,14 @@ export default function AboutPage() {
   const { submitContact } = useContactSubmissions({ skipFetch: true });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const heroTitle = settings?.aboutHeroTitle || "About 3D Titans";
-  const heroSubtitle = settings?.aboutHeroSubtitle || "The titans behind the 3D world.";
-  const missionTitle = settings?.aboutMissionTitle || "Our Mission";
-  const missionBody = settings?.aboutMission || "We are dedicated to providing the highest quality 3D models and printing services to creators, developers, and enthusiasts around the globe. Our mission is to empower imagination by making top-tier 3D assets accessible to everyone.";
-  const contactTitle = settings?.aboutContactTitle || "Get in Touch";
-  const contactBody = settings?.aboutContact || "Have a question, a project proposal, or just want to say hello? We'd love to hear from you.";
-  const contactCardTitle = settings?.aboutContactCardTitle || "Contact Us";
+  const { t } = useTranslation();
+  const heroTitle = settings?.aboutHeroTitle || t('about.defaultHeroTitle');
+  const heroSubtitle = settings?.aboutHeroSubtitle || t('about.defaultHeroSubtitle');
+  const missionTitle = settings?.aboutMissionTitle || t('about.defaultMissionTitle');
+  const missionBody = settings?.aboutMission || t('about.defaultMission');
+  const contactTitle = settings?.aboutContactTitle || t('about.defaultContactTitle');
+  const contactBody = settings?.aboutContact || t('about.defaultContact');
+  const contactCardTitle = settings?.aboutContactCardTitle || t('about.defaultContactCard');
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
