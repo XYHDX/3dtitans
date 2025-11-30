@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { Twitter, Instagram, Facebook } from 'lucide-react';
+import { Instagram, Facebook, type LucideIcon } from 'lucide-react';
 import type { SiteSettings } from '@/lib/types';
 import { useSiteSettings } from '@/hooks/use-data';
 import { useNewsletterSubscriptions } from '@/hooks/use-data';
@@ -35,6 +35,10 @@ export function Footer() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const socialLinks = [
+    { href: settings?.facebookUrl, icon: Facebook, label: 'Facebook' },
+    { href: settings?.instagramUrl, icon: Instagram, label: 'Instagram' },
+  ].filter((link): link is { href: string; icon: LucideIcon; label: string } => Boolean(link.href));
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,16 +92,17 @@ export function Footer() {
                 {loading ? 'Subscribing...' : 'Subscribe'}
               </Button>
             </form>
-             <div className="flex space-x-4">
-              <Link href="#" className="text-muted-foreground hover:text-foreground">
-                <Twitter className="h-5 w-5" />
-              </Link>
-              <Link href="#" className="text-muted-foreground hover:text-foreground">
-                <Instagram className="h-5 w-5" />
-              </Link>
-              <Link href="#" className="text-muted-foreground hover:text-foreground">
-                <Facebook className="h-5 w-5" />
-              </Link>
+            <div className="flex space-x-4">
+              {socialLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={link.label}
+                >
+                  <link.icon className="h-5 w-5" />
+                </Link>
+              ))}
             </div>
           </div>
           {Object.entries(footerLinks).map(([title, links]) => (

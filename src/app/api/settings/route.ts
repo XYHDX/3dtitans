@@ -3,7 +3,18 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
-const KEYS = ['aboutMission', 'aboutContact', 'footerBlurb'] as const;
+const KEYS = [
+  'aboutHeroTitle',
+  'aboutHeroSubtitle',
+  'aboutMissionTitle',
+  'aboutMission',
+  'aboutContactTitle',
+  'aboutContact',
+  'aboutContactCardTitle',
+  'footerBlurb',
+  'facebookUrl',
+  'instagramUrl',
+] as const;
 
 export async function GET() {
   try {
@@ -14,13 +25,20 @@ export async function GET() {
     const map: Record<string, string> = {};
     settings.forEach((s) => (map[s.key] = s.value));
 
-    return NextResponse.json({
-      settings: {
-        aboutMission: map.aboutMission || '',
-        aboutContact: map.aboutContact || '',
-        footerBlurb: map.footerBlurb || '',
-      },
-    });
+    const settingsPayload = {
+      aboutHeroTitle: map.aboutHeroTitle || '',
+      aboutHeroSubtitle: map.aboutHeroSubtitle || '',
+      aboutMissionTitle: map.aboutMissionTitle || '',
+      aboutMission: map.aboutMission || '',
+      aboutContactTitle: map.aboutContactTitle || '',
+      aboutContact: map.aboutContact || '',
+      aboutContactCardTitle: map.aboutContactCardTitle || '',
+      footerBlurb: map.footerBlurb || '',
+      facebookUrl: map.facebookUrl || '',
+      instagramUrl: map.instagramUrl || '',
+    };
+
+    return NextResponse.json({ settings: settingsPayload });
   } catch (error) {
     console.error('Settings GET failed', error);
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });

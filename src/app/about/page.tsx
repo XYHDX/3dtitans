@@ -1,5 +1,4 @@
 'use client';
-import { SiteSettings } from "@/lib/types";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -27,6 +26,13 @@ export default function AboutPage() {
   const { submitContact } = useContactSubmissions({ skipFetch: true });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const heroTitle = settings?.aboutHeroTitle || "About 3D Titans";
+  const heroSubtitle = settings?.aboutHeroSubtitle || "The titans behind the 3D world.";
+  const missionTitle = settings?.aboutMissionTitle || "Our Mission";
+  const missionBody = settings?.aboutMission || "We are dedicated to providing the highest quality 3D models and printing services to creators, developers, and enthusiasts around the globe. Our mission is to empower imagination by making top-tier 3D assets accessible to everyone.";
+  const contactTitle = settings?.aboutContactTitle || "Get in Touch";
+  const contactBody = settings?.aboutContact || "Have a question, a project proposal, or just want to say hello? We'd love to hear from you.";
+  const contactCardTitle = settings?.aboutContactCardTitle || "Contact Us";
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
@@ -54,25 +60,25 @@ export default function AboutPage() {
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16">
-        <h1 className="font-headline text-5xl">About 3D Titans</h1>
-        <p className="text-muted-foreground mt-2 text-lg">The titans behind the 3D world.</p>
+        <h1 className="font-headline text-5xl">{heroTitle}</h1>
+        <p className="text-muted-foreground mt-2 text-lg">{heroSubtitle}</p>
       </div>
       
       <div className="max-w-4xl mx-auto mb-16">
-        <h2 className="font-headline text-4xl text-center mb-8">Our Mission</h2>
+        <h2 className="font-headline text-4xl text-center mb-8">{missionTitle}</h2>
         <p className="text-lg text-muted-foreground text-center">
-          {settings?.aboutMission || "We are dedicated to providing the highest quality 3D models and printing services to creators, developers, and enthusiasts around the globe. Our mission is to empower imagination by making top-tier 3D assets accessible to everyone."}
+          {missionBody}
         </p>
       </div>
 
       <div className="bg-card p-8 md:p-12 rounded-lg">
-        <h2 className="font-headline text-4xl text-center mb-8">Get in Touch</h2>
+        <h2 className="font-headline text-4xl text-center mb-8">{contactTitle}</h2>
         <p className="text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
-          {settings?.aboutContact || "Have a question, a project proposal, or just want to say hello? We'd love to hear from you."}
+          {contactBody}
         </p>
         <Card className="max-w-xl mx-auto">
           <CardHeader>
-            <CardTitle>Contact Us</CardTitle>
+            <CardTitle>{contactCardTitle}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">

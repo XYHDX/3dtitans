@@ -39,9 +39,16 @@ export type Upload = {
 }
 
 export type SiteSettings = {
+  aboutHeroTitle?: string;
+  aboutHeroSubtitle?: string;
+  aboutMissionTitle?: string;
   aboutMission?: string;
+  aboutContactTitle?: string;
   aboutContact?: string;
+  aboutContactCardTitle?: string;
   footerBlurb?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
 };
 
 export type ContactSubmission = {
