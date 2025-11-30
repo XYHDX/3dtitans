@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { useRouter } from 'next/navigation';
 import { useTranslation } from './language-provider';
 import { LanguageToggle } from './language-toggle';
+import { cn } from '@/lib/utils';
 
 export function Header() {
   const [isSheetOpen, setSheetOpen] = useState(false);
@@ -30,7 +31,8 @@ export function Header() {
   const { user } = useSessionUser();
   const { logout } = useLogin();
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isRTL = locale === 'ar';
   const navLinks = useMemo(
     () => [
       { href: '/products', label: t('nav.products') },
@@ -125,7 +127,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className={cn("container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8", isRTL && 'flex-row-reverse')}>
         
         <div className="flex items-center justify-start flex-1 md:flex-initial">
             {/* Mobile Menu */}
@@ -173,7 +175,7 @@ export function Header() {
                 <Logo />
             </Link>
             {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center justify-center space-x-6 text-sm font-medium">
+            <nav className="hidden md:flex items-center justify-center gap-6 text-sm font-medium">
             {navLinks.map((link) => (
                 <Link
                 key={link.href}
