@@ -142,7 +142,7 @@ export function Header() {
                     <SheetTitle className="sr-only">Menu</SheetTitle>
                 </SheetHeader>
                 <Link href="/" className="mb-8 inline-block" onClick={() => setSheetOpen(false)}>
-                    <Logo className="shrink-0 text-primary" />
+                    <Logo className="shrink-0 text-foreground" />
                 </Link>
                 <nav className="flex flex-col gap-6">
                     {navLinks.map((link) => (
@@ -163,8 +163,8 @@ export function Header() {
             </Sheet>
 
             {/* Desktop Logo */}
-            <Link href="/" className="hidden md:flex items-center space-x-2">
-              <Logo className="shrink-0 text-primary" />
+            <Link href="/" className="hidden md:flex items-center gap-2">
+              <Logo className="shrink-0 text-foreground" />
             </Link>
         </div>
 
@@ -172,7 +172,7 @@ export function Header() {
         <div className="flex flex-1 justify-center md:justify-center">
             {/* Mobile Logo */}
             <Link href="/" className="flex items-center md:hidden">
-                <Logo className="shrink-0 text-primary" />
+                <Logo className="shrink-0 text-foreground" />
             </Link>
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center justify-center gap-6 text-sm font-medium">

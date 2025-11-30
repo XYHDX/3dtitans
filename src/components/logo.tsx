@@ -7,7 +7,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 100 20"
       dir="ltr"
-      className={cn('h-6 w-auto text-primary shrink-0', props.className)}
+      className={cn('h-6 w-auto shrink-0 text-foreground', props.className)}
       aria-label="3D Titans logo"
       {...props}
     >
