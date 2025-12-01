@@ -147,6 +147,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'footer.terms': 'Terms of Service',
     'footer.debug': 'Debug',
     'footer.copyright': 'All rights reserved.',
+
+    'brand.title': '3D Titans',
   },
   ar: {
     'nav.products': 'المنتجات',
@@ -285,5 +287,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'footer.terms': 'شروط الاستخدام',
     'footer.debug': 'تصحيح',
     'footer.copyright': 'جميع الحقوق محفوظة.',
+
+    'brand.title': '3D Titans',
   },
 };
