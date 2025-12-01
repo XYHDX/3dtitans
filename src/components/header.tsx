@@ -142,8 +142,8 @@ export function Header() {
                     <SheetTitle className="sr-only">Menu</SheetTitle>
                 </SheetHeader>
                 <Link href="/" className="mb-8 inline-flex items-center gap-2" onClick={() => setSheetOpen(false)}>
-                    <Logo className="shrink-0 text-foreground" />
-                    <span className="font-semibold text-lg">{t('brand.title')}</span>
+                    <Logo className="shrink-0" />
+                    <span className="font-semibold text-base whitespace-nowrap">{t('brand.title')}</span>
                 </Link>
                 <nav className="flex flex-col gap-6">
                     {navLinks.map((link) => (
@@ -165,8 +165,8 @@ export function Header() {
 
             {/* Desktop Logo */}
             <Link href="/" className="hidden md:flex items-center gap-2">
-              <Logo className="shrink-0 text-foreground" />
-              <span className="font-semibold text-lg">{t('brand.title')}</span>
+              <Logo className="shrink-0" />
+              <span className="font-semibold text-base whitespace-nowrap">{t('brand.title')}</span>
             </Link>
         </div>
 
@@ -174,8 +174,8 @@ export function Header() {
         <div className="flex flex-1 justify-center md:justify-center">
             {/* Mobile Logo */}
             <Link href="/" className="flex items-center gap-2 md:hidden">
-                <Logo className="shrink-0 text-foreground" />
-                <span className="font-semibold text-lg">{t('brand.title')}</span>
+                <Logo className="shrink-0" />
+                <span className="font-semibold text-base whitespace-nowrap">{t('brand.title')}</span>
             </Link>
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center justify-center gap-6 text-sm font-medium">
