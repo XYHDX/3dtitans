@@ -164,7 +164,7 @@ export function Header() {
             </Sheet>
 
             {/* Desktop Logo */}
-            <Link href="/" className="hidden md:flex items-center gap-2">
+            <Link href="/" className="hidden md:flex items-center gap-3">
               <Logo className="shrink-0" />
               <span className="font-semibold text-base whitespace-nowrap">{t('brand.title')}</span>
             </Link>
