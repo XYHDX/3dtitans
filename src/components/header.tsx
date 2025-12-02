@@ -157,8 +157,17 @@ export function Header() {
                   </Link>
                 ))}
               </nav>
-              <div className="mt-8 hidden md:block">
-                <LanguageToggle />
+              <div className="mt-6 flex flex-col gap-3">
+                {!user && (
+                  <Button asChild className="w-full">
+                    <Link href="/login">
+                      {t('nav.login')} / {t('nav.signup')}
+                    </Link>
+                  </Button>
+                )}
+                <div className="mt-2">
+                  <LanguageToggle />
+                </div>
               </div>
             </SheetContent>
           </Sheet>
