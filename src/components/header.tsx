@@ -124,13 +124,13 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div
-        className={cn(
-          'container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8',
-          isRTL && 'flex-row-reverse'
-        )}
-      >
-        <div className={cn('flex items-center flex-1 md:flex-initial', isRTL && 'justify-end')}>
+      <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            'flex items-center flex-1 md:flex-initial',
+            isRTL ? 'order-3 justify-end' : 'order-1'
+          )}
+        >
           {/* Mobile Menu */}
           <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
@@ -164,13 +164,19 @@ export function Header() {
           </Sheet>
 
           {/* Desktop Logo */}
-          <Link href="/" className={cn('hidden md:flex items-center', isRTL ? 'ml-4' : 'mr-4')}>
+          <Link
+            href="/"
+            className={cn(
+              'hidden md:flex items-center',
+              isRTL ? 'ml-4' : 'mr-4'
+            )}
+          >
             <Logo width={180} height={60} />
           </Link>
         </div>
 
         {/* Desktop Nav / Mobile Logo */}
-        <div className="flex flex-1 justify-center md:justify-center">
+        <div className="flex flex-1 justify-center md:justify-center order-2">
           {/* Mobile Logo */}
           <Link href="/" className="flex items-center md:hidden">
             <Logo width={150} height={50} />
@@ -190,7 +196,12 @@ export function Header() {
         </div>
 
         {/* Auth Buttons */}
-        <div className={cn('flex items-center justify-end flex-1 md:flex-initial gap-2', isRTL && 'order-first')}>
+        <div
+          className={cn(
+            'flex items-center justify-end flex-1 md:flex-initial gap-2',
+            isRTL ? 'order-1 justify-start md:order-1' : 'order-3'
+          )}
+        >
           <div className="hidden md:flex">
             <LanguageToggle />
           </div>
