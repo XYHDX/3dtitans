@@ -51,7 +51,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Only admins or assigned store-owners can update.
   const isAdmin = user.role === 'admin';
   const isOwner = user.role === 'store-owner' && (existing.assignments || []).some((a) => a.ownerId === user.id);
-  if (!isAdmin && !isOwner) {
+  const isPooledClaim = user.role === 'store-owner' && existing.status === 'Pooled';
+  if (!isAdmin && !isOwner && !isPooledClaim) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -67,7 +68,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   if (claimForOwnerId) {
-    // Allow admin or the claimant themselves.
+    // Allow admin or the claimant themselves. Store-owners can claim pooled orders.
     if (!isAdmin && user.id !== claimForOwnerId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
