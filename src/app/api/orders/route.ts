@@ -41,12 +41,12 @@ export async function GET() {
 
   const baseInclude = { items: true, assignments: { include: { owner: true } } };
 
-  // Auto-pool orders older than 24h that are still pending and assigned.
+  // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
   // Restrict to admin view to avoid side-effects on every store-owner request.
   if (user.role === 'admin') {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const stale = await prisma.order.findMany({
-      where: { status: 'Pending', updatedAt: { lt: cutoff }, assignments: { some: {} } },
+      where: { status: 'AwaitingAcceptance', createdAt: { lt: cutoff }, assignments: { some: {} } },
       select: { id: true },
     });
     if (stale.length) {
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
   const order = await prisma.order.create({
     data: {
       userId: user?.id,
-      status: 'Pending',
+      status: 'AwaitingAcceptance',
       totalAmount: total,
       shippingName: shippingAddress.fullName,
       shippingAddress1: shippingAddress.addressLine1,

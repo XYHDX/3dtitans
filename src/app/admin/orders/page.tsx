@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { CalendarIcon, Send } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,14 @@ const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id:
         });
     };
 
+    if (order.status === 'AwaitingAcceptance') {
+        return (
+            <span className="text-sm font-semibold text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                Awaiting Acceptance
+            </span>
+        );
+    }
+
     return (
         <Select defaultValue={order.status} onValueChange={handleStatusChange as any}>
             <SelectTrigger className="w-[120px]">
@@ -38,30 +46,10 @@ const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id:
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Printing">Printing</SelectItem>
                 <SelectItem value="Finished">Finished</SelectItem>
-                <SelectItem value="Pooled">Pooled</SelectItem>
             </SelectContent>
         </Select>
     );
 };
-
-const ReleaseToPoolButton = ({ order, onRelease }: { order: Order; onRelease: (id: string) => Promise<any> }) => {
-    const { toast } = useToast();
-
-    const handleRelease = async () => {
-        await onRelease(order.id);
-        toast({
-            title: 'Order Released to Pool',
-            description: `Order has been made available for other store owners.`,
-        });
-    };
-
-    return (
-        <Button variant="outline" size="sm" onClick={handleRelease}>
-            <Send className="mr-2 h-4 w-4" />
-            Release to Pool
-        </Button>
-    )
-}
 
 const PredictedDateSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
@@ -137,8 +125,8 @@ function OrdersList() {
     const { user } = useSessionUser();
     const baseFilter =
       user?.role === 'store-owner' && user?.id
-        ? { ownerId: user.id, statusIn: ['Pending', 'Printing', 'Finished'] }
-        : { statusIn: ['Pending', 'Printing', 'Finished'] };
+        ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] }
+        : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] };
     const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(baseFilter);
 
     if (ordersLoading) {
@@ -211,9 +199,25 @@ function OrdersList() {
                                 <div>
                                     <h4 className="font-semibold mb-2">Order Management:</h4>
                                     <div className="text-sm bg-background p-4 rounded-md space-y-4">
-                                      <PredictedDateSelector order={order} onUpdate={updateOrder} />
-                                      <PrioritizeSwitch order={order} onUpdate={updateOrder} />
-                                      <ReleaseToPoolButton order={order} onRelease={releaseOrderToPool} />
+                                      {order.status === 'AwaitingAcceptance' ? (
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button size="sm" onClick={() => updateOrder(order.id, { status: 'Pending' })}>
+                                            Accept
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => releaseOrderToPool(order.id)}
+                                          >
+                                            Reject
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <PredictedDateSelector order={order} onUpdate={updateOrder} />
+                                          <PrioritizeSwitch order={order} onUpdate={updateOrder} />
+                                        </>
+                                      )}
                                     </div>
                                 </div>
                             </div>
