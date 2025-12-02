@@ -107,12 +107,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   };
 
   return (
-    <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
-      <Card>
+    <div className="container mx-auto max-w-5xl py-12 px-4 sm:px-6 lg:px-8">
+      <Card className="overflow-hidden">
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
           <div className="flex flex-col gap-3">
             <div
-              className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40"
+              className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40 max-h-[75vh]"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
             >
