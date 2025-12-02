@@ -78,6 +78,14 @@ export default function LoginPage() {
                   disabled={loading}
                 />
               </div>
+              <div className="flex justify-end text-sm">
+                <Link
+                  href="mailto:support@3dtitans.com?subject=Password%20Reset%20Request"
+                  className="text-primary hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Button type="submit" className="w-full mt-2" disabled={loading}>
                 {loading ? 'Logging in...' : 'Login'}
               </Button>

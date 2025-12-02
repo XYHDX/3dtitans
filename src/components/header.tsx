@@ -116,7 +116,7 @@ export function Header() {
         )}
         <span className="sr-only">{t('nav.openCart')}</span>
       </Button>
-      <Button variant="ghost" asChild>
+      <Button variant="outline" asChild>
         <Link href="/login">{t('nav.login')}</Link>
       </Button>
       <Button asChild>
