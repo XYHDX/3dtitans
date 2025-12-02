@@ -24,6 +24,11 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const { addToCart, getItemQuantity } = useCart();
   const { t } = useTranslation();
   const { user } = useSessionUser();
+  const truncateWords = (value: string, limit: number) => {
+    const words = value.trim().split(/\s+/);
+    if (words.length <= limit) return value;
+    return `${words.slice(0, limit).join(' ')}...`;
+  };
   
   const [quantity, setQuantity] = useState(1);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -195,7 +200,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             <Separator className="my-6" />
 
             <p className="text-muted-foreground text-base leading-relaxed">
-              {product.description || t('productDetail.noDescription')}
+              {product.description
+                ? truncateWords(product.description, 20)
+                : t('productDetail.noDescription')}
             </p>
 
             <p className="mt-3 text-sm font-semibold text-destructive">
