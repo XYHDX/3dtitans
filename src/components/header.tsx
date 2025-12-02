@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from './ui/sheet';
-import { Menu, ShoppingCart, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, ShoppingCart, LogOut, LayoutDashboard, ClipboardList } from 'lucide-react';
 import { Logo } from './logo';
 import { useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
@@ -90,6 +90,12 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem asChild>
+            <Link href="/orders">
+              <ClipboardList className="mr-2 h-4 w-4" />
+              My Orders
+            </Link>
+          </DropdownMenuItem>
           {(user.role === 'store-owner') && (
              <DropdownMenuItem asChild>
               <Link href="/store-dashboard">
