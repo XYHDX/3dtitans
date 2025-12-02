@@ -116,11 +116,8 @@ export function Header() {
         )}
         <span className="sr-only">{t('nav.openCart')}</span>
       </Button>
-      <Button variant="outline" asChild>
-        <Link href="/login">{t('nav.login')}</Link>
-      </Button>
       <Button asChild>
-          <Link href="/signup">{t('nav.signup')}</Link>
+        <Link href="/login">{t('nav.login')} / {t('nav.signup')}</Link>
       </Button>
      </div>
   );
