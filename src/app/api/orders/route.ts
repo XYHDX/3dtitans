@@ -41,11 +41,20 @@ export async function GET() {
 
   const baseInclude = { items: true, assignments: { include: { owner: true } } };
 
-  const fallbackOwnerIds: string[] = [];
-  if (user.email === 'owner@3dtitans.com') fallbackOwnerIds.push('owner-1');
-  if (user.email === 'aboude.murad@gmail.com') fallbackOwnerIds.push('owner-2');
-  if (user.email === 'admin@3dtitans.com' || user.email === 'yahyademeriah@gmail.com') {
-    fallbackOwnerIds.push('admin-1', 'admin-ya');
+  // Auto-pool orders older than 24h that are still pending and assigned.
+  if (user.role === 'admin' || user.role === 'store-owner') {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const stale = await prisma.order.findMany({
+      where: { status: 'Pending', createdAt: { lt: cutoff }, assignments: { some: {} } },
+      select: { id: true },
+    });
+    if (stale.length) {
+      const staleIds = stale.map((o) => o.id);
+      await prisma.$transaction([
+        prisma.orderAssignment.deleteMany({ where: { orderId: { in: staleIds } } }),
+        prisma.order.updateMany({ where: { id: { in: staleIds } }, data: { status: 'Pooled' } }),
+      ]);
+    }
   }
 
   let orders;
@@ -60,9 +69,6 @@ export async function GET() {
         OR: [
           { assignments: { some: { ownerId: user.id } } },
           { assignments: { some: { ownerEmail: user.email || '' } } },
-          ...(fallbackOwnerIds.length
-            ? [{ assignments: { some: { ownerId: { in: fallbackOwnerIds } } } }]
-            : []),
           { status: 'Pooled' },
         ],
       },
@@ -98,6 +104,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
   }
 
+  const productIds = items.map((item: any) => item.productId).filter(Boolean);
+  const productOwners = productIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, uploaderId: true },
+      })
+    : [];
+  const uploaderIds = Array.from(new Set(productOwners.map((p) => p.uploaderId).filter(Boolean)));
+  const initialAssignees = Array.isArray(assignedAdminIds) && assignedAdminIds.length > 0 ? assignedAdminIds : uploaderIds;
+
   const order = await prisma.order.create({
     data: {
       userId: user?.id,
@@ -122,7 +138,13 @@ export async function POST(req: Request) {
       },
       assignments: assignedAdminIds && assignedAdminIds.length > 0
         ? {
-            create: assignedAdminIds.map((ownerId: string) => ({
+            create: initialAssignees.map((ownerId: string) => ({
+              ownerId,
+            })),
+          }
+        : initialAssignees.length
+        ? {
+            create: initialAssignees.map((ownerId: string) => ({
               ownerId,
             })),
           }

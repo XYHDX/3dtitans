@@ -49,6 +49,9 @@ export default function OrderPoolPage() {
                 <CardDescription>
                     These orders have been released by their original assignees. Claim one to begin processing.
                 </CardDescription>
+                <p className="text-sm font-semibold text-destructive mt-2">
+                  Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
+                </p>
             </CardHeader>
             <CardContent>
                 <Table>
