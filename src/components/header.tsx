@@ -124,75 +124,79 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className={cn("container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8", isRTL && 'flex-row-reverse')}>
-        
-        <div className="flex items-center justify-start flex-1 md:flex-initial">
-            {/* Mobile Menu */}
-            <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
-                <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Open menu" className="md:hidden">
-                    <Menu className="h-5 w-5" />
-                </Button>
-                </SheetTrigger>
-                <SheetContent side="left">
-                <SheetHeader>
-                    <SheetTitle className="sr-only">Menu</SheetTitle>
-                </SheetHeader>
-                <Link href="/" className="mb-8 inline-flex items-center" onClick={() => setSheetOpen(false)}>
-                    <Logo width={180} height={60} />
-                </Link>
-                <nav className="flex flex-col gap-6">
-                    {navLinks.map((link) => (
-                    <Link
-                        key={link.href}
-                        href={link.href}
-                        onClick={() => setSheetOpen(false)}
-                        className="text-lg font-semibold hover:text-primary"
-                    >
-                        {link.label}
-                    </Link>
-                    ))}
-                </nav>
-                <div className="mt-8">
-                  <LanguageToggle />
-                </div>
-                </SheetContent>
-            </Sheet>
+      <div
+        className={cn(
+          'container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8',
+          isRTL && 'flex-row-reverse'
+        )}
+      >
+        <div className={cn('flex items-center flex-1 md:flex-initial', isRTL && 'justify-end')}>
+          {/* Mobile Menu */}
+          <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Open menu" className={cn('md:hidden', isRTL && 'order-2 ml-2')}>
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side={isRTL ? 'right' : 'left'}>
+              <SheetHeader>
+                <SheetTitle className="sr-only">Menu</SheetTitle>
+              </SheetHeader>
+              <Link href="/" className="mb-8 inline-flex items-center" onClick={() => setSheetOpen(false)}>
+                <Logo width={180} height={60} />
+              </Link>
+              <nav className="flex flex-col gap-6">
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setSheetOpen(false)}
+                    className="text-lg font-semibold hover:text-primary"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+              <div className="mt-8">
+                <LanguageToggle />
+              </div>
+            </SheetContent>
+          </Sheet>
 
-            {/* Desktop Logo */}
-            <Link href="/" className="hidden md:flex items-center">
-              <Logo width={180} height={60} />
-            </Link>
+          {/* Desktop Logo */}
+          <Link href="/" className={cn('hidden md:flex items-center', isRTL ? 'ml-4' : 'mr-4')}>
+            <Logo width={180} height={60} />
+          </Link>
         </div>
 
         {/* Desktop Nav / Mobile Logo */}
         <div className="flex flex-1 justify-center md:justify-center">
-            {/* Mobile Logo */}
-            <Link href="/" className="flex items-center md:hidden">
-                <Logo width={150} height={50} />
-            </Link>
-            {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center justify-center gap-6 text-sm font-medium">
+          {/* Mobile Logo */}
+          <Link href="/" className="flex items-center md:hidden">
+            <Logo width={150} height={50} />
+          </Link>
+          {/* Desktop Nav */}
+          <nav className="hidden md:flex items-center justify-center gap-6 text-sm font-medium">
             {navLinks.map((link) => (
-                <Link
+              <Link
                 key={link.href}
                 href={link.href}
                 className="transition-colors hover:text-foreground/80 text-foreground/60"
-                >
+              >
                 {link.label}
-                </Link>
+              </Link>
             ))}
-            </nav>
+          </nav>
         </div>
 
         {/* Auth Buttons */}
-        <div className="flex items-center justify-end flex-1 md:flex-initial gap-2">
+        <div className={cn('flex items-center justify-end flex-1 md:flex-initial gap-2', isRTL && 'order-first')}>
           <div className="hidden md:flex">
             <LanguageToggle />
           </div>
           {authContent}
         </div>
-        
+
         <CartSheet open={isCartOpen} onOpenChange={setCartOpen} />
       </div>
     </header>
