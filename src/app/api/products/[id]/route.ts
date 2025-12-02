@@ -4,6 +4,15 @@ import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
 function mapProduct(product: any) {
+  let gallery: string[] = [];
+  if (product.imageGallery) {
+    try {
+      gallery = JSON.parse(product.imageGallery) || [];
+    } catch (e) {
+      gallery = [];
+    }
+  }
+
   return {
     id: product.id,
     name: product.name,
@@ -12,6 +21,7 @@ function mapProduct(product: any) {
     description: product.description || '',
     tags: product.tags ? product.tags.split(',').filter(Boolean) : [],
     imageUrl: product.imageUrl,
+    imageGallery: gallery,
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
@@ -49,20 +59,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const body = await req.json();
-  const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview } = body;
+  const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery } = body;
+
+  const updateData: any = {};
+  if (name !== undefined) updateData.name = name;
+  if (category !== undefined) updateData.category = category;
+  if (price !== undefined) updateData.price = price;
+  if (description !== undefined) updateData.description = description;
+  if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.join(',') : tags;
+  if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+  if (imageHint !== undefined) updateData.imageHint = imageHint;
+  if (has3dPreview !== undefined) updateData.has3dPreview = has3dPreview;
+  if (imageGallery !== undefined) {
+    updateData.imageGallery = Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : imageGallery;
+  }
 
   const product = await prisma.product.update({
     where: { id: params.id },
-    data: {
-      name,
-      category,
-      price,
-      description,
-      tags: Array.isArray(tags) ? tags.join(',') : tags,
-      imageUrl,
-      imageHint,
-      has3dPreview,
-    },
+    data: updateData,
   });
 
   return NextResponse.json({ product: mapProduct(product) });

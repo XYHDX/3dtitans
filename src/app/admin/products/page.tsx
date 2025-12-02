@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -65,32 +65,94 @@ const productSchema = z.object({
 
 type ProductFormData = z.infer<typeof productSchema>;
 
-const editPriceSchema = z.object({
+const editProductSchema = z.object({
+    name: z.string().min(3, 'Name must be at least 3 characters'),
     price: z.coerce.number().min(0, 'Price must be a positive number'),
+    category: z.string().min(2, 'Category is required'),
+    description: z.string().optional(),
+    tags: z.string().optional(),
+    imageFiles: z
+      .any()
+      .refine((files) => !files || files.length <= 3, 'You can upload up to 3 images')
+      .refine(
+        (files) =>
+          !files ||
+          Array.from(files).every(
+            (f: File) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
+          ),
+        'Images must be JPG/PNG/WEBP and under 5MB each'
+      ),
 });
-type EditPriceFormData = z.infer<typeof editPriceSchema>;
+type EditProductFormData = z.infer<typeof editProductSchema>;
 
 function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: (id: string, patch: Partial<Product>) => Promise<Product | null> }) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const { toast } = useToast();
-    const { register, handleSubmit, formState: { errors } } = useForm<EditPriceFormData>({
-        resolver: zodResolver(editPriceSchema),
-        defaultValues: {
-            price: product.price,
-        },
+    const existingGallery = useMemo(
+      () => (product.imageGallery && product.imageGallery.length ? product.imageGallery : [product.imageUrl]).filter(Boolean),
+      [product.imageGallery, product.imageUrl]
+    );
+    const { register, handleSubmit, formState: { errors } } = useForm<EditProductFormData>({
+      resolver: zodResolver(editProductSchema),
+      defaultValues: {
+        name: product.name,
+        price: product.price,
+        category: product.category,
+        description: product.description || '',
+        tags: product.tags?.join(', ') || '',
+      },
     });
 
-    const onSubmit = async (data: EditPriceFormData) => {
+    const onSubmit = async (data: EditProductFormData) => {
         setLoading(true);
-        const updated = await onUpdate(product.id, { price: data.price });
-        if (updated) {
-            toast({ title: 'Success', description: 'Product price updated.' });
-            setOpen(false);
-        } else {
-            toast({ variant: 'destructive', title: 'Update failed', description: 'Could not update product.' });
+        try {
+          let uploaded: string[] = [];
+          const files: File[] = data.imageFiles ? Array.from(data.imageFiles) : [];
+
+          if (files.length) {
+            if (!supabase) throw new Error('Storage not configured');
+            for (const file of files) {
+              const fileExt = file.name.split('.').pop();
+              const filePath = `products/${product.uploaderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+              const { error: uploadError } = await supabase.storage
+                .from('product-images')
+                .upload(filePath, file, { cacheControl: '3600', upsert: false });
+              if (uploadError) throw uploadError;
+              const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+              const imageUrl = publicUrlData?.publicUrl;
+              if (!imageUrl) throw new Error('Could not get public URL for image');
+              uploaded.push(imageUrl);
+            }
+          }
+
+          const nextGallery = [...existingGallery, ...uploaded];
+
+          const updated = await onUpdate(product.id, {
+            name: data.name,
+            price: data.price,
+            category: data.category,
+            description: data.description || '',
+            tags: (data.tags || '')
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+            imageUrl: uploaded[0] || product.imageUrl,
+            imageGallery: nextGallery,
+          });
+
+          if (updated) {
+              toast({ title: 'Success', description: 'Product updated.' });
+              setOpen(false);
+          } else {
+              toast({ variant: 'destructive', title: 'Update failed', description: 'Could not update product.' });
+          }
+        } catch (err: any) {
+          console.error('Update failed', err);
+          toast({ variant: 'destructive', title: 'Update failed', description: err?.message || 'Something went wrong.' });
+        } finally {
+          setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
@@ -100,20 +162,55 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
             </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Edit Price for {product.name}</DialogTitle>
+                    <DialogTitle>Edit {product.name}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor={`edit-name-${product.id}`}>Name</Label>
+                        <Input id={`edit-name-${product.id}`} {...register('name')} />
+                        {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor={`edit-category-${product.id}`}>Category</Label>
+                        <Input id={`edit-category-${product.id}`} {...register('category')} />
+                        {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
+                    </div>
                     <div className="grid gap-2">
                         <Label htmlFor={`edit-price-${product.id}`}>Price ($)</Label>
                         <Input id={`edit-price-${product.id}`} type="number" step="0.01" {...register('price')} />
                         {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor={`edit-description-${product.id}`}>Description</Label>
+                        <Textarea id={`edit-description-${product.id}`} rows={4} {...register('description')} />
+                        {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor={`edit-tags-${product.id}`}>Tags (comma-separated)</Label>
+                        <Input id={`edit-tags-${product.id}`} {...register('tags')} />
+                        {errors.tags && <p className="text-xs text-destructive">{errors.tags.message as string}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label>Current Images</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {existingGallery.map((img, idx) => (
+                            <div key={img + idx} className="h-16 w-16 overflow-hidden rounded border bg-muted">
+                              <Image src={img} alt={product.name} width={64} height={64} className="h-full w-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor={`edit-images-${product.id}`}>Add Images (up to 3, 5MB each)</Label>
+                        <Input id={`edit-images-${product.id}`} type="file" multiple accept="image/jpeg,image/png,image/webp" {...register('imageFiles')} />
+                        {errors.imageFiles && <p className="text-xs text-destructive">{errors.imageFiles.message as string}</p>}
                     </div>
                     <DialogFooter>
                         <DialogClose asChild>
                             <Button type="button" variant="secondary">Cancel</Button>
                         </DialogClose>
                         <Button type="submit" disabled={loading}>
-                            {loading ? 'Saving...' : 'Save Price'}
+                            {loading ? 'Saving...' : 'Save Changes'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -259,9 +356,9 @@ function ProductsManager() {
   }
 
   return (
-    <div className="grid gap-8 md:grid-cols-3">
-      <div className="md:col-span-1">
-        <Card>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden">
+      <div className="grid min-w-0 gap-6 md:grid-cols-3">
+        <Card className="w-full md:col-span-1 min-w-0">
           <CardHeader>
             <CardTitle>Add New Product</CardTitle>
             <CardDescription>Fill out the form to add a new product to your store.</CardDescription>
@@ -302,9 +399,7 @@ function ProductsManager() {
             </form>
           </CardContent>
         </Card>
-      </div>
-      <div className="md:col-span-2">
-        <Card>
+        <Card className="w-full md:col-span-2 min-w-0">
             <CardHeader>
               <CardTitle>My Products</CardTitle>
               <CardDescription>
