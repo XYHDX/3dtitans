@@ -135,9 +135,11 @@ const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: st
 
 function OrdersList() {
     const { user } = useSessionUser();
-    const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(
-        user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : { statusIn: ['Pending', 'Printing', 'Finished', 'Pooled'] }
-    );
+    const baseFilter =
+      user?.role === 'store-owner' && user?.id
+        ? { ownerId: user.id, statusIn: ['Pending', 'Printing', 'Finished'] }
+        : { statusIn: ['Pending', 'Printing', 'Finished'] };
+    const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(baseFilter);
 
     if (ordersLoading) {
         return (

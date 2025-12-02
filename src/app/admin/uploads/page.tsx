@@ -182,12 +182,16 @@ export default function UploadsAdminPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end items-center">
-                      <Button asChild variant="ghost" size="icon">
-                        <Link href={upload.downloadURL} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-4 w-4" />
-                          <span className="sr-only">Download</span>
-                        </Link>
-                      </Button>
+                      <a
+                        href={upload.downloadURL || upload.fileUrl || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download</span>
+                      </a>
                       <DeleteUploadAlert upload={upload} onDelete={deleteUpload} />
                     </div>
                   </TableCell>
