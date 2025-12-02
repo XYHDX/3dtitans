@@ -116,7 +116,7 @@ export function Header() {
         )}
         <span className="sr-only">{t('nav.openCart')}</span>
       </Button>
-      <Button asChild>
+      <Button asChild className="hidden md:inline-flex">
         <Link href="/login">{t('nav.login')} / {t('nav.signup')}</Link>
       </Button>
      </div>
@@ -157,7 +157,7 @@ export function Header() {
                   </Link>
                 ))}
               </nav>
-              <div className="mt-8">
+              <div className="mt-8 hidden md:block">
                 <LanguageToggle />
               </div>
             </SheetContent>
