@@ -1,5 +1,6 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
@@ -85,4 +86,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   return NextResponse.json({ order: mapOrder(updated) });
+}
+
+export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const user = session?.user;
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const existing = await prisma.order.findUnique({
+    where: { id: params.id },
+    include: { items: true, assignments: true },
+  });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  await prisma.$transaction([
+    prisma.orderAssignment.deleteMany({ where: { orderId: params.id } }),
+    prisma.orderItem.deleteMany({ where: { orderId: params.id } }),
+    prisma.order.delete({ where: { id: params.id } }),
+  ]);
+
+  return NextResponse.json({ ok: true });
 }

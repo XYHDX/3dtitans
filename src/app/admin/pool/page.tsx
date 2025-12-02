@@ -38,7 +38,7 @@ const ClaimOrderButton = ({ order, onClaim, onAfterClaim }: { order: Order; onCl
 
 export default function OrderPoolPage() {
     const { user } = useSessionUser();
-    const { data: orders, loading, claimOrder, refresh } = useOrders({ statusIn: ['Pooled'] });
+    const { data: orders, loading, claimOrder, deleteOrder, refresh } = useOrders({ statusIn: ['Pooled'] });
 
     const claimableOrders = orders?.filter(order => !order.assignedAdminIds.includes(user?.id || ''));
 
@@ -88,9 +88,25 @@ export default function OrderPoolPage() {
                                             : 'N/A'}
                                     </TableCell>
                                     <TableCell>{order.items.reduce((acc, item) => acc + item.quantity, 0)}</TableCell>
-                                    <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
+                    <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                                     <TableCell className="text-right">
-                                        <ClaimOrderButton order={order} onClaim={claimOrder} onAfterClaim={refresh} />
+                                        <div className="flex items-center justify-end gap-2">
+                                            <ClaimOrderButton order={order} onClaim={claimOrder} onAfterClaim={refresh} />
+                                            {user?.role === 'admin' && (
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        const ok = await deleteOrder(order.id);
+                                                        if (ok) {
+                                                            refresh();
+                                                        }
+                                                    }}
+                                                >
+                                                    Remove
+                                                </Button>
+                                            )}
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))

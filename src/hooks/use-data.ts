@@ -213,6 +213,13 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     return data.order as Order;
   }, []);
 
+  const deleteOrder = useCallback(async (id: string) => {
+    const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    return true;
+  }, []);
+
   const data = useMemo(() => {
     let result = orders;
     if (filter?.ownerId) {
@@ -224,7 +231,7 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     return result;
   }, [orders, filter?.ownerId, filter?.statusIn]);
 
-  return { data, loading, refresh, createOrder, updateOrder, releaseOrderToPool, claimOrder };
+  return { data, loading, refresh, createOrder, updateOrder, releaseOrderToPool, claimOrder, deleteOrder };
 }
 
 // Settings
