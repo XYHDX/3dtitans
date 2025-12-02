@@ -107,19 +107,29 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   };
 
   return (
-    <div className="container mx-auto max-w-5xl py-12 px-4 sm:px-6 lg:px-8">
+    <div className="container mx-auto max-w-4xl py-12 px-4 sm:px-6 lg:px-8">
       <Card className="overflow-hidden">
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
           <div className="flex flex-col gap-3">
             <div
-              className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40 max-h-[75vh]"
+              className="relative w-full max-w-3xl mx-auto aspect-square px-2 sm:px-4"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
             >
+              <div className="absolute inset-2 sm:inset-4 rounded-xl border bg-black/60" />
+              <div className="absolute inset-2 sm:inset-4 rounded-xl overflow-hidden">
+                <Image
+                  src={activeImage || product.imageUrl}
+                  alt={product.name}
+                  fill
+                  className="object-contain"
+                  data-ai-hint={product.imageHint}
+                />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-2 left-2 z-10 bg-background/80 hover:bg-background"
+                className="absolute left-4 top-4 sm:left-6 sm:top-6 z-20 bg-background/80 hover:bg-background"
                 asChild
               >
                 <Link href="/products">
@@ -132,7 +142,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
+                    className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 z-20 bg-background/80 hover:bg-background"
                     onClick={goToPrev}
                   >
                     <ArrowLeft className="h-5 w-5" />
@@ -140,20 +150,13 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
+                    className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 z-20 bg-background/80 hover:bg-background"
                     onClick={goToNext}
                   >
                     <ArrowRight className="h-5 w-5" />
                   </Button>
                 </>
               )}
-              <Image
-                src={activeImage || product.imageUrl}
-                alt={product.name}
-                fill
-                className="object-contain"
-                data-ai-hint={product.imageHint}
-              />
             </div>
             {gallery.length > 1 && (
               <div className="grid grid-cols-4 gap-2">
