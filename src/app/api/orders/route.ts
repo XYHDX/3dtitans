@@ -42,10 +42,11 @@ export async function GET() {
   const baseInclude = { items: true, assignments: { include: { owner: true } } };
 
   // Auto-pool orders older than 24h that are still pending and assigned.
-  if (user.role === 'admin' || user.role === 'store-owner') {
+  // Restrict to admin view to avoid side-effects on every store-owner request.
+  if (user.role === 'admin') {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const stale = await prisma.order.findMany({
-      where: { status: 'Pending', createdAt: { lt: cutoff }, assignments: { some: {} } },
+      where: { status: 'Pending', updatedAt: { lt: cutoff }, assignments: { some: {} } },
       select: { id: true },
     });
     if (stale.length) {
@@ -113,6 +114,10 @@ export async function POST(req: Request) {
     : [];
   const uploaderIds = Array.from(new Set(productOwners.map((p) => p.uploaderId).filter(Boolean)));
   const initialAssignees = Array.isArray(assignedAdminIds) && assignedAdminIds.length > 0 ? assignedAdminIds : uploaderIds;
+
+  if (!initialAssignees.length) {
+    return NextResponse.json({ error: 'Order cannot be created because products are missing uploader assignments.' }, { status: 400 });
+  }
 
   const order = await prisma.order.create({
     data: {
