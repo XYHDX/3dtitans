@@ -218,7 +218,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <p className="text-4xl font-bold">${product.price.toFixed(2)}</p>
               
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4 sm:flex-nowrap">
                  <div className="flex items-center gap-2">
                     <Button variant="outline" size="icon" onClick={() => setQuantity(q => Math.max(1, q - 1))}>
                       <Minus className="h-4 w-4" />
@@ -228,7 +228,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button size="lg" onClick={handleAddToCart}>
+                <Button size="lg" className="min-w-[140px]" onClick={handleAddToCart}>
                   <ShoppingCart className="mr-2 h-5 w-5" />
                   {t('productDetail.addToCart')}
                 </Button>

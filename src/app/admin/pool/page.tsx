@@ -9,17 +9,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/lib/types";
 
-const ClaimOrderButton = ({ order, onClaim }: { order: Order; onClaim: (id: string, ownerId: string) => Promise<any> }) => {
+const ClaimOrderButton = ({ order, onClaim, onAfterClaim }: { order: Order; onClaim: (id: string, ownerId: string) => Promise<any>; onAfterClaim?: () => void }) => {
     const { user } = useSessionUser();
     const { toast } = useToast();
 
     const handleClaim = async () => {
         if (!user) return;
-        await onClaim(order.id, user.id || user.uid);
-        toast({
-            title: 'Order Claimed!',
-            description: `You have claimed order ${order.id.substring(0, 8)}.`,
-        });
+        const claimed = await onClaim(order.id, user.id || user.uid);
+        if (claimed) {
+            toast({
+                title: 'Order Claimed!',
+                description: `You have claimed order ${order.id.substring(0, 8)}.`,
+            });
+            onAfterClaim?.();
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Claim failed',
+                description: 'Could not claim this order. Please try again.',
+            });
+        }
     };
 
     return (
@@ -29,7 +38,7 @@ const ClaimOrderButton = ({ order, onClaim }: { order: Order; onClaim: (id: stri
 
 export default function OrderPoolPage() {
     const { user } = useSessionUser();
-    const { data: orders, loading, claimOrder } = useOrders({ statusIn: ['Pooled'] });
+    const { data: orders, loading, claimOrder, refresh } = useOrders({ statusIn: ['Pooled'] });
 
     const claimableOrders = orders?.filter(order => !order.assignedAdminIds.includes(user?.id || ''));
 
@@ -81,7 +90,7 @@ export default function OrderPoolPage() {
                                     <TableCell>{order.items.reduce((acc, item) => acc + item.quantity, 0)}</TableCell>
                                     <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                                     <TableCell className="text-right">
-                                        <ClaimOrderButton order={order} onClaim={claimOrder} />
+                                        <ClaimOrderButton order={order} onClaim={claimOrder} onAfterClaim={refresh} />
                                     </TableCell>
                                 </TableRow>
                             ))

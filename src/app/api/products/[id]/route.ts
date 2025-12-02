@@ -1,5 +1,6 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
@@ -94,6 +95,37 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
-  await prisma.product.delete({ where: { id: params.id } });
+  const ordersWithProduct = await prisma.order.findMany({
+    where: { items: { some: { productId: params.id } } },
+    include: { items: true, assignments: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    for (const order of ordersWithProduct) {
+      const remainingItems = order.items.filter((item: any) => item.productId !== params.id);
+      const removeIds = order.items.filter((item: any) => item.productId === params.id).map((i: any) => i.id);
+
+      if (removeIds.length) {
+        await tx.orderItem.deleteMany({ where: { id: { in: removeIds } } });
+      }
+
+      if (remainingItems.length === 0) {
+        await tx.orderAssignment.deleteMany({ where: { orderId: order.id } });
+        await tx.order.delete({ where: { id: order.id } });
+      } else {
+        const newTotal = remainingItems.reduce(
+          (sum: number, item: any) => sum + Number(item.price) * item.quantity,
+          0
+        );
+        await tx.order.update({
+          where: { id: order.id },
+          data: { totalAmount: new Prisma.Decimal(newTotal) },
+        });
+      }
+    }
+
+    await tx.product.delete({ where: { id: params.id } });
+  });
+
   return NextResponse.json({ ok: true });
 }
