@@ -25,6 +25,7 @@ function mapProduct(product: any) {
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
+    uploaderEmail: product.uploaderEmail || product.uploader?.email || '',
     rating: product.rating || 0,
     reviewCount: product.reviewCount || 0,
     has3dPreview: product.has3dPreview || false,
@@ -36,7 +37,7 @@ export async function GET() {
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { uploader: { select: { id: true, name: true } } },
+      include: { uploader: { select: { id: true, name: true, email: true } } },
     });
     return NextResponse.json({ products: products.map(mapProduct) });
   } catch (error) {
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ product: mapProduct(product) });
+    return NextResponse.json({ product: mapProduct({ ...product, uploaderEmail: user.email || '' }) });
   } catch (error) {
     console.error('Products POST failed', error);
     return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });

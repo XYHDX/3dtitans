@@ -26,6 +26,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const { user } = useSessionUser();
   
   const [quantity, setQuantity] = useState(1);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const product = products?.find((p) => p.id === id) || null;
   const gallery = useMemo(
@@ -74,17 +75,51 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const rating = product.rating || 4.5;
   const reviewCount = product.reviewCount || 117;
   const quantityInCart = getItemQuantity(product.id);
+  const goToPrev = () => {
+    if (!gallery.length) return;
+    const idx = gallery.findIndex((g) => g === activeImage);
+    const nextIdx = (idx - 1 + gallery.length) % gallery.length;
+    setActiveImage(gallery[nextIdx]);
+  };
+
+  const goToNext = () => {
+    if (!gallery.length) return;
+    const idx = gallery.findIndex((g) => g === activeImage);
+    const nextIdx = (idx + 1) % gallery.length;
+    setActiveImage(gallery[nextIdx]);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0]?.clientX || null);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const delta = (e.changedTouches[0]?.clientX || 0) - touchStartX;
+    if (Math.abs(delta) > 40) {
+      if (delta > 0) {
+        goToPrev();
+      } else {
+        goToNext();
+      }
+    }
+    setTouchStartX(null);
+  };
 
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <Card>
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
           <div className="flex flex-col gap-3">
-            <div className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40">
+            <div
+              className="relative aspect-square w-full overflow-hidden rounded-lg border bg-black/40"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
+                className="absolute top-2 left-2 z-10 bg-background/80 hover:bg-background"
                 asChild
               >
                 <Link href="/products">
@@ -98,11 +133,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                     variant="ghost"
                     size="icon"
                     className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
-                    onClick={() => {
-                      const idx = gallery.findIndex((g) => g === activeImage);
-                      const nextIdx = (idx - 1 + gallery.length) % gallery.length;
-                      setActiveImage(gallery[nextIdx]);
-                    }}
+                    onClick={goToPrev}
                   >
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
@@ -110,11 +141,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                     variant="ghost"
                     size="icon"
                     className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/80 hover:bg-background"
-                    onClick={() => {
-                      const idx = gallery.findIndex((g) => g === activeImage);
-                      const nextIdx = (idx + 1) % gallery.length;
-                      setActiveImage(gallery[nextIdx]);
-                    }}
+                    onClick={goToNext}
                   >
                     <ArrowRight className="h-5 w-5" />
                   </Button>
@@ -124,7 +151,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                 src={activeImage || product.imageUrl}
                 alt={product.name}
                 fill
-                className="object-cover"
+                className="object-contain"
                 data-ai-hint={product.imageHint}
               />
             </div>
@@ -166,6 +193,10 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
             <p className="text-muted-foreground text-base leading-relaxed">
               {product.description || t('productDetail.noDescription')}
+            </p>
+
+            <p className="mt-3 text-sm font-semibold text-destructive">
+              If you want to buy the STL file contact the store owner at {product.uploaderEmail || 'their email is not available'}.
             </p>
             
             {product.tags && product.tags.length > 0 && (

@@ -15,6 +15,7 @@ export type Product = {
   imageGallery?: string[];
   imageHint?: string;
   has3dPreview?: boolean;
+  uploaderEmail?: string;
   createdAt?: Timestamp;
   description?: string;
   tags?: string[];
