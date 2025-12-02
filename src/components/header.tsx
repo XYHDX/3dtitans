@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from './ui/sheet';
-import { Menu, ShoppingCart, LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react';
+import { Menu, ShoppingCart, LogOut, LayoutDashboard } from 'lucide-react';
 import { Logo } from './logo';
 import { useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
@@ -109,13 +109,7 @@ export function Header() {
      </div>
   ) : (
      <div className="flex items-center gap-2">
-       <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)} className="relative">
-        <ShoppingCart className="h-5 w-5" />
-        {cartItemCount > 0 && (
-          <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 justify-center p-0">{cartItemCount}</Badge>
-        )}
-        <span className="sr-only">{t('nav.openCart')}</span>
-      </Button>
+      <LanguageToggle />
       <Button asChild className="hidden md:inline-flex">
         <Link href="/login">{t('nav.login')} / {t('nav.signup')}</Link>
       </Button>
@@ -125,16 +119,11 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
-        <div
-          className={cn(
-            'flex items-center flex-1 md:flex-initial',
-            isRTL ? 'order-3 justify-end' : 'order-1'
-          )}
-        >
+        <div className="flex items-center flex-1 md:flex-initial order-1">
           {/* Mobile Menu */}
           <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Open menu" className={cn('md:hidden', isRTL && 'order-2 ml-2')}>
+              <Button variant="ghost" size="icon" aria-label="Open menu" className="md:hidden">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -205,15 +194,12 @@ export function Header() {
         </div>
 
         {/* Auth Buttons */}
-        <div
-          className={cn(
-            'flex items-center justify-end flex-1 md:flex-initial gap-2',
-            isRTL ? 'order-1 justify-start md:order-1' : 'order-3'
+        <div className="flex items-center justify-end flex-1 md:flex-initial gap-2 order-3">
+          {user && (
+            <div className="hidden md:flex">
+              <LanguageToggle />
+            </div>
           )}
-        >
-          <div className="hidden md:flex">
-            <LanguageToggle />
-          </div>
           {authContent}
         </div>
 
