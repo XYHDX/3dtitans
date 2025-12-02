@@ -160,7 +160,7 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
             <DialogTrigger asChild>
                 <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Edit {product.name}</DialogTitle>
                 </DialogHeader>
