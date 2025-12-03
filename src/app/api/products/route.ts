@@ -34,17 +34,43 @@ function mapProduct(product: any) {
   };
 }
 
-export async function GET() {
+async function ensureSiteSettingTable() {
+  try {
+    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
+    return true;
+  } catch (error) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SiteSetting" (
+          "key" TEXT PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      return true;
+    } catch (err) {
+      console.error('Failed to ensure SiteSetting table', err);
+      return false;
+    }
+  }
+}
+
+async function getPrioritizedIds() {
+  const ok = await ensureSiteSettingTable();
+  if (!ok) return new Set<string>();
   try {
     const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    if (!prioritizedSetting?.value) return new Set<string>();
+    return new Set<string>(JSON.parse(prioritizedSetting.value));
+  } catch (error) {
+    console.error('Failed to read prioritizedStoreIds', error);
+    return new Set<string>();
+  }
+}
+
+export async function GET() {
+  try {
+    const prioritizedIds = await getPrioritizedIds();
 
     const prioritized = await prisma.product.findMany({
       orderBy: [
@@ -64,15 +90,7 @@ export async function GET() {
     console.error('Products GET failed (priority ordering)', error);
     // Fallback for environments without isPrioritizedStore column.
     try {
-      const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-      const prioritizedIds = (() => {
-        if (!prioritizedSetting?.value) return new Set<string>();
-        try {
-          return new Set<string>(JSON.parse(prioritizedSetting.value));
-        } catch {
-          return new Set<string>();
-        }
-      })();
+      const prioritizedIds = await getPrioritizedIds();
 
       const products = await prisma.product.findMany({
         orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],

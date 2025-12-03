@@ -35,6 +35,40 @@ function mapProduct(product: any) {
   };
 }
 
+async function ensureSiteSettingTable() {
+  try {
+    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
+    return true;
+  } catch (error) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SiteSetting" (
+          "key" TEXT PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      return true;
+    } catch (err) {
+      console.error('Failed to ensure SiteSetting table', err);
+      return false;
+    }
+  }
+}
+
+async function getPrioritizedIds() {
+  const ok = await ensureSiteSettingTable();
+  if (!ok) return new Set<string>();
+  try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    if (!prioritizedSetting?.value) return new Set<string>();
+    return new Set<string>(JSON.parse(prioritizedSetting.value));
+  } catch (error) {
+    console.error('Failed to read prioritizedStoreIds', error);
+    return new Set<string>();
+  }
+}
+
 async function canManage(user: any, product: any) {
   if (!user) return false;
   if (user.role === 'admin') return true;
@@ -44,15 +78,7 @@ async function canManage(user: any, product: any) {
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
 
     const product = await prisma.product.findUnique({
       where: { id: params.id },
@@ -69,15 +95,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
       include: { uploader: { select: { id: true, name: true, email: true } } },
     });
     if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
     const mapped = mapProduct(fallback);
     mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(fallback.uploaderId);
     return NextResponse.json({ product: mapped });
@@ -124,15 +142,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       data: updateData,
       include: { uploader: { select: { id: true, name: true, email: true } } },
     });
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
     const mapped = mapProduct(product);
     mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(product.uploaderId);
     return NextResponse.json({ product: mapped });

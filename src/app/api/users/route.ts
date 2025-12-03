@@ -11,6 +11,40 @@ async function requireAdmin() {
   return session;
 }
 
+async function ensureSiteSettingTable() {
+  try {
+    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
+    return true;
+  } catch (error) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SiteSetting" (
+          "key" TEXT PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      return true;
+    } catch (err) {
+      console.error('Failed to ensure SiteSetting table', err);
+      return false;
+    }
+  }
+}
+
+async function getPrioritizedIds() {
+  const ok = await ensureSiteSettingTable();
+  if (!ok) return new Set<string>();
+  try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    if (!prioritizedSetting?.value) return new Set<string>();
+    return new Set<string>(JSON.parse(prioritizedSetting.value));
+  } catch (error) {
+    console.error('Failed to read prioritizedStoreIds', error);
+    return new Set<string>();
+  }
+}
+
 export async function GET() {
   const session = await requireAdmin();
   if (!session) {
@@ -18,15 +52,7 @@ export async function GET() {
   }
 
   try {
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
 
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
@@ -56,15 +82,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Users GET failed (priority select)', error);
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {

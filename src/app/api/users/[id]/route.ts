@@ -11,6 +11,40 @@ async function requireAdmin() {
   return session;
 }
 
+async function ensureSiteSettingTable() {
+  try {
+    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
+    return true;
+  } catch (error) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SiteSetting" (
+          "key" TEXT PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      return true;
+    } catch (err) {
+      console.error('Failed to ensure SiteSetting table', err);
+      return false;
+    }
+  }
+}
+
+async function getPrioritizedIds() {
+  const ok = await ensureSiteSettingTable();
+  if (!ok) return new Set<string>();
+  try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    if (!prioritizedSetting?.value) return new Set<string>();
+    return new Set<string>(JSON.parse(prioritizedSetting.value));
+  } catch (error) {
+    console.error('Failed to read prioritizedStoreIds', error);
+    return new Set<string>();
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await requireAdmin();
   if (!session) {
@@ -37,15 +71,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   try {
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    const prioritizedIds = (() => {
-      if (!prioritizedSetting?.value) return new Set<string>();
-      try {
-        return new Set<string>(JSON.parse(prioritizedSetting.value));
-      } catch {
-        return new Set<string>();
-      }
-    })();
+    const prioritizedIds = await getPrioritizedIds();
 
     const user = await prisma.user.update({
       where: { id: params.id },
@@ -70,6 +96,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (message.includes('Unknown column') || message.includes('isPrioritizedStore')) {
       // Fallback: store prioritized IDs in SiteSetting so toggles still work without the column.
       const prioritize = !!body.isPrioritizedStore;
+      const ensureOk = await ensureSiteSettingTable();
+      if (!ensureOk) {
+        return NextResponse.json(
+          { error: 'Could not persist priority flag. SiteSetting table is missing and could not be created.' },
+          { status: 500 }
+        );
+      }
       const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
       let ids: string[] = [];
       try {
