@@ -44,12 +44,24 @@ async function canManage(user: any, product: any) {
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
     const product = await prisma.product.findUnique({
       where: { id: params.id },
       include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
     });
     if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ product: mapProduct(product) });
+    const mapped = mapProduct(product);
+    mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(product.uploaderId);
+    return NextResponse.json({ product: mapped });
   } catch (error) {
     console.error('Product GET failed (priority include)', error);
     const fallback = await prisma.product.findUnique({
@@ -57,7 +69,18 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
       include: { uploader: { select: { id: true, name: true, email: true } } },
     });
     if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ product: mapProduct(fallback) });
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+    const mapped = mapProduct(fallback);
+    mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(fallback.uploaderId);
+    return NextResponse.json({ product: mapped });
   }
 }
 
@@ -101,7 +124,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       data: updateData,
       include: { uploader: { select: { id: true, name: true, email: true } } },
     });
-    return NextResponse.json({ product: mapProduct(product) });
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+    const mapped = mapProduct(product);
+    mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(product.uploaderId);
+    return NextResponse.json({ product: mapped });
   }
 }
 

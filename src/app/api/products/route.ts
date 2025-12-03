@@ -36,6 +36,16 @@ function mapProduct(product: any) {
 
 export async function GET() {
   try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
     const prioritized = await prisma.product.findMany({
       orderBy: [
         { uploader: { isPrioritizedStore: 'desc' } },
@@ -44,16 +54,36 @@ export async function GET() {
       ],
       include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
     });
-    return NextResponse.json({ products: prioritized.map(mapProduct) });
+    return NextResponse.json({
+      products: prioritized.map((p) => ({
+        ...mapProduct(p),
+        isPrioritizedStore: mapProduct(p).isPrioritizedStore || prioritizedIds.has(p.uploaderId),
+      })),
+    });
   } catch (error) {
     console.error('Products GET failed (priority ordering)', error);
     // Fallback for environments without isPrioritizedStore column.
     try {
+      const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+      const prioritizedIds = (() => {
+        if (!prioritizedSetting?.value) return new Set<string>();
+        try {
+          return new Set<string>(JSON.parse(prioritizedSetting.value));
+        } catch {
+          return new Set<string>();
+        }
+      })();
+
       const products = await prisma.product.findMany({
         orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
         include: { uploader: { select: { id: true, name: true, email: true } } },
       });
-      return NextResponse.json({ products: products.map(mapProduct) });
+      return NextResponse.json({
+        products: products.map((p) => ({
+          ...mapProduct(p),
+          isPrioritizedStore: mapProduct(p).isPrioritizedStore || prioritizedIds.has(p.uploaderId),
+        })),
+      });
     } catch (err) {
       console.error('Products GET fallback failed', err);
       return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });

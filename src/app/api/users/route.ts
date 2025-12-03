@@ -18,6 +18,16 @@ export async function GET() {
   }
 
   try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -41,11 +51,20 @@ export async function GET() {
         image: u.image,
         emailVerified: !!u.emailVerified,
         createdAt: u.createdAt,
-        isPrioritizedStore: !!u.isPrioritizedStore,
+        isPrioritizedStore: !!u.isPrioritizedStore || prioritizedIds.has(u.id),
       })),
     });
   } catch (error) {
     console.error('Users GET failed (priority select)', error);
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const prioritizedIds = (() => {
+      if (!prioritizedSetting?.value) return new Set<string>();
+      try {
+        return new Set<string>(JSON.parse(prioritizedSetting.value));
+      } catch {
+        return new Set<string>();
+      }
+    })();
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -68,7 +87,7 @@ export async function GET() {
         image: u.image,
         emailVerified: !!u.emailVerified,
         createdAt: u.createdAt,
-        isPrioritizedStore: false,
+        isPrioritizedStore: prioritizedIds.has(u.id),
       })),
     });
   }
