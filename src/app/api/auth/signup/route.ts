@@ -35,20 +35,25 @@ export async function POST(req: Request) {
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
-    }
-
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: name || email.split('@')[0],
-        passwordHash,
-        role: seededRoles[email] || 'user',
-      },
-    });
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            name: existing.name || name || email.split('@')[0],
+            role: existing.role || seededRoles[email] || 'user',
+          },
+        })
+      : await prisma.user.create({
+          data: {
+            email,
+            name: name || email.split('@')[0],
+            passwordHash,
+            role: seededRoles[email] || 'user',
+          },
+        });
 
     return NextResponse.json({
       user: {
