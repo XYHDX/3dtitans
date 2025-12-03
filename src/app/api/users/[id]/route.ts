@@ -56,7 +56,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
   } catch (error) {
     console.error('User update failed (priority flag)', error);
-    // Retry without priority flag for legacy DBs.
+    const message = (error as any)?.message || '';
+    if (message.includes('Unknown column') || message.includes('isPrioritizedStore')) {
+      return NextResponse.json(
+        { error: 'Priority flag column missing. Run prisma db push/migrate to add isPrioritizedStore to users.' },
+        { status: 400 }
+      );
+    }
+    // Retry without priority flag for legacy DBs that error for other reasons.
     const { isPrioritizedStore, ...rest } = data;
     const user = await prisma.user.update({
       where: { id: params.id },

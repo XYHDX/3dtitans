@@ -126,8 +126,8 @@ function PrioritySwitch({ user }: { user: UserProfile & { id: string } }) {
 
   const handleChange = async (value: boolean) => {
     setIsPrioritized(value);
-    const ok = await updateUserPriority(user.id, value);
-    if (ok) {
+    const result = await updateUserPriority(user.id, value);
+    if (result.ok) {
       toast({
         title: 'Priority updated',
         description: `${user.displayName} is now ${value ? 'prioritized' : 'not prioritized'} on the home page.`,
@@ -137,7 +137,7 @@ function PrioritySwitch({ user }: { user: UserProfile & { id: string } }) {
       toast({
         variant: 'destructive',
         title: 'Update failed',
-        description: 'Could not update store priority.',
+        description: result.message || 'Could not update store priority.',
       });
     }
   };
