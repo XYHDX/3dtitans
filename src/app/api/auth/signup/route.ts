@@ -3,6 +3,18 @@ import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
 
+async function ensurePriorityColumn() {
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPrioritizedStore" BOOLEAN DEFAULT FALSE;'
+    );
+    return true;
+  } catch (err) {
+    console.error('Failed to ensure isPrioritizedStore column (signup)', err);
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const limited = rateLimit(req, 'signup', { windowMs: 10 * 60 * 1000, max: 10 });
@@ -65,6 +77,41 @@ export async function POST(req: Request) {
         },
       });
     } catch (dbError) {
+      console.error('Signup db error, attempting column fix', dbError);
+      const ensured = await ensurePriorityColumn();
+      if (ensured) {
+        try {
+          const existing = await prisma.user.findUnique({ where: { email } });
+          const user = existing
+            ? await prisma.user.update({
+                where: { id: existing.id },
+                data: {
+                  passwordHash,
+                  name: existing.name || name || email.split('@')[0],
+                  role: existing.role || seededRoles[email] || 'user',
+                },
+              })
+            : await prisma.user.create({
+                data: {
+                  email,
+                  name: name || email.split('@')[0],
+                  passwordHash,
+                  role: seededRoles[email] || 'user',
+                },
+              });
+
+          return NextResponse.json({
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+            },
+          });
+        } catch (dbError2) {
+          console.error('Signup db retry failed', dbError2);
+        }
+      }
       console.error('Signup db error, falling back to transient user', dbError);
       // Fallback: allow signup without DB persistence to unblock.
       return NextResponse.json({

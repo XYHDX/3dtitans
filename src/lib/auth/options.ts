@@ -8,6 +8,18 @@ import bcrypt from 'bcryptjs';
 const googleEnabled =
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
 
+async function ensurePriorityColumn() {
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPrioritizedStore" BOOLEAN DEFAULT FALSE;'
+    );
+    return true;
+  } catch (err) {
+    console.error('Failed to ensure isPrioritizedStore column', err);
+    return false;
+  }
+}
+
 const seedUsers: Record<
   string,
   { name: string; password: string; role: 'admin' | 'store-owner' | 'user' }
@@ -64,25 +76,52 @@ export const authOptions: NextAuthOptions = {
         if (!user && seedUsers[email]) {
           const seed = seedUsers[email];
           const passwordHash = await bcrypt.hash(seed.password, 10);
-          user = await prisma.user.create({
-            data: {
-              email,
-              name: seed.name,
-              passwordHash,
-              role: seed.role,
-              emailVerified: new Date(),
-            },
-          });
+          try {
+            user = await prisma.user.create({
+              data: {
+                email,
+                name: seed.name,
+                passwordHash,
+                role: seed.role,
+                emailVerified: new Date(),
+              },
+            });
+          } catch (err) {
+            prismaError = err;
+            const ensured = await ensurePriorityColumn();
+            if (ensured) {
+              user = await prisma.user.create({
+                data: {
+                  email,
+                  name: seed.name,
+                  passwordHash,
+                  role: seed.role,
+                  emailVerified: new Date(),
+                },
+              });
+            }
+          }
         }
 
         // If the user exists but has no passwordHash and matches a seed, set it.
         if (user && !user.passwordHash && seedUsers[email]) {
           const seed = seedUsers[email];
           const passwordHash = await bcrypt.hash(seed.password, 10);
-          user = await prisma.user.update({
-            where: { id: user.id },
-            data: { passwordHash, role: seed.role, name: user.name || seed.name, emailVerified: user.emailVerified || new Date() },
-          });
+          try {
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: { passwordHash, role: seed.role, name: user.name || seed.name, emailVerified: user.emailVerified || new Date() },
+            });
+          } catch (err) {
+            prismaError = err;
+            const ensured = await ensurePriorityColumn();
+            if (ensured) {
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: { passwordHash, role: seed.role, name: user.name || seed.name, emailVerified: user.emailVerified || new Date() },
+              });
+            }
+          }
         }
 
         if (!user && seedUsers[email] && credentials.password === seedUsers[email].password) {
@@ -115,6 +154,17 @@ export const authOptions: NextAuthOptions = {
             });
           } catch (err) {
             prismaError = err;
+            const ensured = await ensurePriorityColumn();
+            if (ensured) {
+              try {
+                user = await prisma.user.update({
+                  where: { id: user.id },
+                  data: { passwordHash },
+                });
+              } catch (err2) {
+                prismaError = err2;
+              }
+            }
           }
         }
 
@@ -137,6 +187,17 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               prismaError = err;
+              const ensured = await ensurePriorityColumn();
+              if (ensured) {
+                try {
+                  user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: { passwordHash },
+                  });
+                } catch (err2) {
+                  prismaError = err2;
+                }
+              }
             }
             isValid = true;
           } else if (user.passwordHash === credentials.password) {
@@ -149,6 +210,17 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               prismaError = err;
+              const ensured = await ensurePriorityColumn();
+              if (ensured) {
+                try {
+                  user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: { passwordHash },
+                  });
+                } catch (err2) {
+                  prismaError = err2;
+                }
+              }
             }
             isValid = true;
           } else {
@@ -161,6 +233,17 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               prismaError = err;
+              const ensured = await ensurePriorityColumn();
+              if (ensured) {
+                try {
+                  user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: { passwordHash },
+                  });
+                } catch (err2) {
+                  prismaError = err2;
+                }
+              }
             }
             isValid = true;
           }
