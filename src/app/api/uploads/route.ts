@@ -51,12 +51,18 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot upload files' }, { status: 403 });
 
   const body = await req.json();
   const { modelName, fileName, fileUrl, downloadURL, notes, phoneNumber } = body;
 
   if (!modelName || !fileName || !downloadURL) {
     return NextResponse.json({ error: 'Model name, file name, and downloadURL are required' }, { status: 400 });
+  }
+
+  const safeFileName = String(fileName || '').toLowerCase();
+  if (!safeFileName.endsWith('.stl')) {
+    return NextResponse.json({ error: 'Only .stl files are accepted' }, { status: 400 });
   }
 
   const upload = await prisma.upload.create({

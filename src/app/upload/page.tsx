@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -51,6 +51,21 @@ export default function UploadPage() {
         description: t('upload.toastTooLargeDesc', '', { size: MAX_FILE_SIZE_MB }),
       });
       event.target.value = ''; // Clear the input
+      return;
+    }
+
+    const extension = selectedFile.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'stl') {
+      const message = t('upload.toastInvalidTypeDesc');
+      setError(message);
+      setFile(null);
+      setPreviewName('');
+      toast({
+        variant: 'destructive',
+        title: t('upload.toastInvalidTypeTitle'),
+        description: message,
+      });
+      event.target.value = '';
       return;
     }
 
@@ -143,6 +158,25 @@ export default function UploadPage() {
       )
   }
 
+  if (user.role === 'store-owner') {
+    return (
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center space-y-4">
+          <h2 className="text-3xl font-headline">{t('upload.storeOwnerBlockedTitle')}</h2>
+          <p className="text-muted-foreground">{t('upload.storeOwnerBlockedDesc')}</p>
+          <div className="flex justify-center gap-3">
+            <Button asChild variant="secondary">
+              <Link href="/store-dashboard">Go to store dashboard</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/">Return home</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
@@ -193,7 +227,7 @@ export default function UploadPage() {
                       </p>
                       <p className="text-xs text-muted-foreground">{t('upload.fileTypes', '', { size: MAX_FILE_SIZE_MB })}</p>
                     </div>
-                    <Input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".stl,.obj,.fbx" />
+                    <Input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".stl" />
                   </Label>
                 </div>
                 {previewName && !error && (

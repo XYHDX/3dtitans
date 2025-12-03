@@ -36,6 +36,14 @@ export function ProductCard({ product }: ProductCardProps) {
       });
       return;
     }
+    if (user.role === 'store-owner') {
+      toast({
+        variant: 'destructive',
+        title: t('auth.storeOwnerBlockedTitle'),
+        description: t('auth.storeOwnerBlockedDesc'),
+      });
+      return;
+    }
     addToCart(product, 1);
     toast({
       title: t('productCard.addedTitle'),

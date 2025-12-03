@@ -59,6 +59,14 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       });
       return;
     }
+    if (user.role === 'store-owner') {
+      toast({
+        variant: 'destructive',
+        title: t('auth.storeOwnerBlockedTitle'),
+        description: t('auth.storeOwnerBlockedDesc'),
+      });
+      return;
+    }
 
     addToCart(product, quantity);
     

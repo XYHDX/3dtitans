@@ -75,6 +75,10 @@ export default function CheckoutPage() {
       router.push('/login');
       return;
     }
+    if (user.role === 'store-owner') {
+      toast({ variant: 'destructive', title: t('checkout.storeOwnerBlockedTitle'), description: t('checkout.storeOwnerBlockedDesc') });
+      return;
+    }
 
     setLoading(true);
 
@@ -144,6 +148,25 @@ export default function CheckoutPage() {
           <Button asChild size="lg">
             <Link href="/login">{t('checkout.loginCta')}</Link>
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role === 'store-owner') {
+    return (
+      <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-xl mx-auto text-center space-y-4">
+          <h1 className="font-headline text-4xl text-destructive">{t('checkout.storeOwnerBlockedTitle')}</h1>
+          <p className="text-muted-foreground">{t('checkout.storeOwnerBlockedDesc')}</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button asChild variant="secondary">
+              <Link href="/store-dashboard">Store dashboard</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/">{t('checkout.emptyCta')}</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );

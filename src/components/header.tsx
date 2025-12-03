@@ -34,12 +34,18 @@ export function Header() {
   const { t, locale } = useTranslation();
   const isRTL = locale === 'ar';
   const navLinks = useMemo(
-    () => [
-      { href: '/products', label: t('nav.products') },
-      { href: '/upload', label: t('nav.upload') },
-      { href: '/about', label: t('nav.about') },
-    ],
-    [t]
+    () => {
+      const links = [
+        { href: '/products', label: t('nav.products') },
+        { href: '/upload', label: t('nav.upload') },
+        { href: '/about', label: t('nav.about') },
+      ];
+      if (user?.role === 'store-owner') {
+        return links.filter((link) => link.href !== '/upload');
+      }
+      return links;
+    },
+    [t, user?.role]
   );
 
   const handleLogout = async () => {
@@ -57,13 +63,15 @@ export function Header() {
   
   const authContent = user ? (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)} className="relative">
-        <ShoppingCart className="h-5 w-5" />
-        {cartItemCount > 0 && (
-          <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 justify-center p-0">{cartItemCount}</Badge>
-        )}
-        <span className="sr-only">{t('nav.openCart')}</span>
-      </Button>
+      {user.role !== 'store-owner' && (
+        <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)} className="relative">
+          <ShoppingCart className="h-5 w-5" />
+          {cartItemCount > 0 && (
+            <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 justify-center p-0">{cartItemCount}</Badge>
+          )}
+          <span className="sr-only">{t('nav.openCart')}</span>
+        </Button>
+      )}
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -90,12 +98,14 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem asChild>
-            <Link href="/orders">
-              <ClipboardList className="mr-2 h-4 w-4" />
-              My Orders
-            </Link>
-          </DropdownMenuItem>
+          {user.role !== 'store-owner' && (
+            <DropdownMenuItem asChild>
+              <Link href="/orders">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                My Orders
+              </Link>
+            </DropdownMenuItem>
+          )}
           {(user.role === 'store-owner') && (
              <DropdownMenuItem asChild>
               <Link href="/store-dashboard">

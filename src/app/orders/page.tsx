@@ -3,10 +3,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useOrders } from '@/hooks/use-data';
 import { useSessionUser } from '@/hooks/use-session';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: string }> = {
@@ -14,7 +16,7 @@ function StatusBadge({ status }: { status: string }) {
     Pending: { label: 'Pending', variant: 'secondary' },
     Printing: { label: 'Printing', variant: 'default' },
     Finished: { label: 'Finished', variant: 'success' },
-    Pooled: { label: 'Pooled', variant: 'destructive' },
+    Pooled: { label: 'Processing', variant: 'secondary' },
   };
   const meta = map[status] || { label: status, variant: 'outline' };
   return <Badge variant={meta.variant as any}>{meta.label}</Badge>;
@@ -22,12 +24,34 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function UserOrdersPage() {
   const { user } = useSessionUser();
-  const { data: orders, loading } = useOrders(undefined, { skipFetch: !user });
+  const { data: orders, loading } = useOrders(
+    { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] },
+    { skipFetch: !user }
+  );
 
   if (!user) {
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground">Please log in to view your orders.</p>
+      </div>
+    );
+  }
+
+  if (user.role === 'store-owner') {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <h2 className="text-2xl font-headline text-destructive">Orders unavailable</h2>
+        <p className="text-muted-foreground max-w-xl mx-auto">
+          Store owner accounts cannot place orders. Switch to a customer account to track purchases.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <Button asChild variant="secondary">
+            <Link href="/store-dashboard">Store dashboard</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/">{'Back home'}</Link>
+          </Button>
+        </div>
       </div>
     );
   }

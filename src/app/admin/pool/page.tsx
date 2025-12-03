@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/lib/types";
+import { AlertTriangle } from "lucide-react";
 
 const ClaimOrderButton = ({ order, onClaim, onAfterClaim }: { order: Order; onClaim: (id: string, ownerId: string) => Promise<any>; onAfterClaim?: () => void }) => {
     const { user } = useSessionUser();
@@ -49,9 +50,17 @@ export default function OrderPoolPage() {
                 <CardDescription>
                     These orders have been released by their original assignees. Claim one to begin processing.
                 </CardDescription>
-                <p className="text-sm font-semibold text-destructive mt-2">
-                  Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
-                </p>
+                <div className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 shadow-sm flex items-start gap-3">
+                  <div className="mt-0.5 text-destructive">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-destructive font-bold">Important</p>
+                    <p className="text-sm font-semibold text-destructive">
+                      Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
+                    </p>
+                  </div>
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>
