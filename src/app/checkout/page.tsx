@@ -15,6 +15,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useOrders } from '@/hooks/use-data';
 import { useTranslation } from '@/components/language-provider';
@@ -27,6 +28,7 @@ type AddressFormData = {
   city: string;
   postalCode: string;
   country: string;
+  notes?: string;
 };
 
 
@@ -50,6 +52,7 @@ export default function CheckoutPage() {
         city: z.string().min(2, t('checkout.errors.city')),
         postalCode: z.string().min(4, t('checkout.errors.postalCode')),
         country: z.string().min(2, t('checkout.errors.country')),
+        notes: z.string().max(500, t('checkout.errors.notesMax')).optional().or(z.literal('')),
       }),
     [t]
   );
@@ -115,6 +118,7 @@ export default function CheckoutPage() {
         customerEmail: addressData.email,
         assignedAdminIds: assignedAdminIds,
         isPrioritized: false,
+        notes: addressData.notes || '',
       };
 
       const result = await createOrder(orderData as any);
@@ -219,6 +223,16 @@ export default function CheckoutPage() {
                     <Label htmlFor="country">{t('checkout.labels.country')}</Label>
                     <Input id="country" {...register('country')} />
                     {errors.country && <p className="text-xs text-destructive">{errors.country.message}</p>}
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label htmlFor="notes">{t('checkout.notesLabel')}</Label>
+                    <Textarea
+                      id="notes"
+                      placeholder={t('checkout.notesPlaceholder')}
+                      rows={4}
+                      {...register('notes')}
+                    />
+                    {errors.notes && <p className="text-xs text-destructive">{errors.notes.message}</p>}
                   </div>
               </form>
             </CardContent>

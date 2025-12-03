@@ -106,6 +106,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.errors.city': 'City is required.',
     'checkout.errors.postalCode': 'Postal code is required.',
     'checkout.errors.country': 'Country is required.',
+    'checkout.errors.notesMax': 'Notes must be 500 characters or fewer.',
+    'checkout.notesLabel': 'Add notes (QR, dimensions, links)',
+    'checkout.notesPlaceholder': 'Share QR code URL, sizing, or a reference link for this order.',
 
     'productDetail.rating': '{rating} ({count} reviews)',
     'productDetail.tags': 'Tags:',
@@ -141,6 +144,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'upload.toastSuccessDesc': 'File "{file}" has been submitted.',
     'upload.toastFailTitle': 'Upload Failed',
     'upload.toastFailDesc': 'Error: {message}. Please check the console for more details.',
+
+    'orders.customerNotes': 'Customer notes',
+    'orders.noCustomerNotes': 'No customer notes provided.',
 
     'about.defaultHeroTitle': 'About 3D Titans',
     'about.defaultHeroSubtitle': 'The titans behind the 3D world.',
@@ -254,6 +260,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.errors.city': 'المدينة مطلوبة.',
     'checkout.errors.postalCode': 'الرمز البريدي مطلوب.',
     'checkout.errors.country': 'الدولة مطلوبة.',
+    'checkout.errors.notesMax': 'الملاحظات يجب ألا تتجاوز 500 حرف.',
+    'checkout.notesLabel': 'أضف ملاحظات (رمز QR أو الأبعاد أو الروابط)',
+    'checkout.notesPlaceholder': 'شارك رابط رمز QR أو المقاسات أو رابط مرجعي لهذا الطلب.',
 
     'productDetail.rating': '{rating} ({count} مراجعة)',
     'productDetail.tags': 'الوسوم:',
@@ -289,6 +298,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'upload.toastSuccessDesc': 'تم إرسال الملف "{file}".',
     'upload.toastFailTitle': 'فشل الرفع',
     'upload.toastFailDesc': 'خطأ: {message}. يرجى مراجعة وحدة التحكم للتفاصيل.',
+
+    'orders.customerNotes': 'ملاحظات العميل',
+    'orders.noCustomerNotes': 'لا توجد ملاحظات من العميل.',
 
     'about.defaultHeroTitle': 'من نحن 3D Titans',
     'about.defaultHeroSubtitle': 'العمالقة خلف عالم الطباعة ثلاثية الأبعاد.',

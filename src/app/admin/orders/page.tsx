@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useSessionUser } from '@/hooks/use-session';
 import { useOrders } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
 import type { Order } from '@/lib/types';
 
 const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
@@ -123,6 +124,7 @@ const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: st
 
 function OrdersList() {
     const { user } = useSessionUser();
+    const { t } = useTranslation();
     const baseFilter =
       user?.role === 'store-owner' && user?.id
         ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] }
@@ -194,6 +196,16 @@ function OrdersList() {
                                         <p><strong>Name:</strong> {order.shippingAddress.fullName}</p>
                                         <p><strong>Phone:</strong> {order.phoneNumber}</p>
                                         <p><strong>Address:</strong> {order.shippingAddress.addressLine1}, {order.shippingAddress.city}, {order.shippingAddress.postalCode}, {order.shippingAddress.country}</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">{t('orders.customerNotes')}</h4>
+                                    <div className="text-sm bg-background p-4 rounded-md">
+                                        {order.notes && order.notes.trim() ? (
+                                            <p className="whitespace-pre-line">{order.notes}</p>
+                                        ) : (
+                                            <p className="text-muted-foreground">{t('orders.noCustomerNotes')}</p>
+                                        )}
                                     </div>
                                 </div>
                                 <div>

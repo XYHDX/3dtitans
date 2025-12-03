@@ -87,6 +87,7 @@ model Order {
   shippingCountry    String
   phoneNumber        String
   customerEmail      String?
+  notes              String?
   predictedFinishAt  DateTime?
   isPrioritized      Boolean   @default(false)
   createdAt          DateTime  @default(now())

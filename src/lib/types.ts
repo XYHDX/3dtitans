@@ -83,6 +83,7 @@ export type Order = {
         country: string;
     },
     phoneNumber: string;
+    notes?: string;
     customerEmail?: string;
     predictedFinishDate?: Timestamp | Date | string;
     isPrioritized?: boolean;

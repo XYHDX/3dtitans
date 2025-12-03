@@ -28,6 +28,7 @@ function mapOrder(order: any) {
     },
     phoneNumber: order.phoneNumber,
     customerEmail: order.customerEmail || '',
+    notes: order.notes || '',
     predictedFinishDate: order.predictedFinishAt || undefined,
     isPrioritized: order.isPrioritized || false,
     assignedAdminIds: order.assignments?.map((a: any) => a.ownerId) || [],
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
   if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
   const body = await req.json();
-  const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized } = body;
+  const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes } = body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'Items are required' }, { status: 400 });
@@ -132,6 +133,7 @@ export async function POST(req: Request) {
       shippingCountry: shippingAddress.country,
       phoneNumber,
       customerEmail: customerEmail || user?.email,
+      notes: notes || '',
       isPrioritized: !!isPrioritized,
       items: {
         create: items.map((item: any) => ({

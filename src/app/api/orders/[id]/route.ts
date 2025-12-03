@@ -28,6 +28,7 @@ function mapOrder(order: any) {
     },
     phoneNumber: order.phoneNumber,
     customerEmail: order.customerEmail || '',
+    notes: order.notes || '',
     predictedFinishDate: order.predictedFinishAt || undefined,
     isPrioritized: order.isPrioritized || false,
     assignedAdminIds: order.assignments?.map((a: any) => a.ownerId) || [],
