@@ -153,8 +153,18 @@ export function useUsers() {
     });
     if (!res.ok) {
       console.error('Failed to update store priority');
-      const body = await res.json().catch(() => null);
-      return { ok: false, message: body?.error || 'Could not update store priority.' };
+      let message = 'Could not update store priority.';
+      try {
+        const body = await res.json();
+        message = body?.error || message;
+      } catch {
+        try {
+          message = await res.text();
+        } catch {
+          // keep default
+        }
+      }
+      return { ok: false, message };
     }
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, isPrioritizedStore } : u)));
     return { ok: true };

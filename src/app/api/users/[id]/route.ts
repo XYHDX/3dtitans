@@ -84,11 +84,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         set.delete(params.id);
       }
       const nextValue = JSON.stringify(Array.from(set));
-      await prisma.siteSetting.upsert({
-        where: { key: 'prioritizedStoreIds' },
-        update: { value: nextValue },
-        create: { key: 'prioritizedStoreIds', value: nextValue },
-      });
+      try {
+        await prisma.siteSetting.upsert({
+          where: { key: 'prioritizedStoreIds' },
+          update: { value: nextValue },
+          create: { key: 'prioritizedStoreIds', value: nextValue },
+        });
+      } catch (err) {
+        console.error('Failed to upsert prioritizedStoreIds setting', err);
+        return NextResponse.json(
+          { error: 'Could not persist priority flag. Ensure SiteSetting table is available.' },
+          { status: 500 }
+        );
+      }
 
       const user = await prisma.user.findUnique({ where: { id: params.id } });
       if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
