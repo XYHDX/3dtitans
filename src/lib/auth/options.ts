@@ -79,7 +79,17 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isValid) {
-          return null;
+          // If the account is a known seed and the provided password matches the seed, reset the hash.
+          const seed = seedUsers[email];
+          if (seed && credentials.password === seed.password) {
+            const passwordHash = await bcrypt.hash(seed.password, 10);
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: { passwordHash },
+            });
+          } else {
+            return null;
+          }
         }
 
         return {
