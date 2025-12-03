@@ -65,8 +65,26 @@ export function useProducts(filter?: { uploaderId?: string }) {
   }, []);
 
   const data = useMemo(() => {
-    if (filter?.uploaderId) return products.filter((p) => p.uploaderId === filter.uploaderId);
-    return products;
+    let result = products;
+    if (filter?.uploaderId) result = result.filter((p) => p.uploaderId === filter.uploaderId);
+
+    const sorted = [...result].sort((a, b) => {
+      const prioritizedDiff = Number(!!b.isPrioritizedStore) - Number(!!a.isPrioritizedStore);
+      if (prioritizedDiff !== 0) return prioritizedDiff;
+      const ratingDiff = (b.rating || 0) - (a.rating || 0);
+      if (ratingDiff !== 0) return ratingDiff;
+      const reviewsDiff = (b.reviewCount || 0) - (a.reviewCount || 0);
+      if (reviewsDiff !== 0) return reviewsDiff;
+      const dateA = a.createdAt
+        ? new Date((a.createdAt as any).toDate ? (a.createdAt as any).toDate() : (a.createdAt as any)).getTime()
+        : 0;
+      const dateB = b.createdAt
+        ? new Date((b.createdAt as any).toDate ? (b.createdAt as any).toDate() : (b.createdAt as any)).getTime()
+        : 0;
+      return dateB - dateA;
+    });
+
+    return sorted;
   }, [products, filter?.uploaderId]);
 
   return { data, loading, refresh, addProduct, updateProduct, deleteProduct };

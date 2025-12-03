@@ -10,7 +10,8 @@ import { useTranslation } from '../language-provider';
 
 export function FeaturedProducts() {
   const { data: allProducts, loading } = useProducts();
-  const products = allProducts?.slice(0, 4);
+  const prioritizedProducts = allProducts?.filter((p) => p.isPrioritizedStore) || [];
+  const products = prioritizedProducts.slice(0, 6);
   const { t } = useTranslation();
 
   return (
@@ -39,16 +40,19 @@ export function FeaturedProducts() {
             </div>
           ))
         ) : products && products.length > 0 ? (
-           products.map((product) => (
+          products.map((product) => (
             <ProductCard 
               key={product.id} 
               product={product}
             />
           ))
         ) : (
-            <div className="col-span-full text-center text-muted-foreground">
-                <p>{t('featured.empty')}</p>
-            </div>
+          <div className="col-span-full text-center text-muted-foreground">
+            <p>{t('featured.empty')}</p>
+            <Button asChild variant="link" className="mt-2">
+              <Link href="/products">{t('featured.viewAll')}</Link>
+            </Button>
+          </div>
         )}
       </div>
     </section>

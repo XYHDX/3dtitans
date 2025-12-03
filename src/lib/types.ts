@@ -21,6 +21,7 @@ export type Product = {
   tags?: string[];
   uploaderId: string;
   uploaderName: string;
+  isPrioritizedStore?: boolean;
 };
 
 export type Upload = {

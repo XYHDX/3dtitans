@@ -30,14 +30,19 @@ function mapProduct(product: any) {
     reviewCount: product.reviewCount || 0,
     has3dPreview: product.has3dPreview || false,
     createdAt: product.createdAt,
+    isPrioritizedStore: !!product.uploader?.isPrioritizedStore,
   };
 }
 
 export async function GET() {
   try {
     const products = await prisma.product.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { uploader: { select: { id: true, name: true, email: true } } },
+      orderBy: [
+        { uploader: { isPrioritizedStore: 'desc' } },
+        { rating: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
     });
     return NextResponse.json({ products: products.map(mapProduct) });
   } catch (error) {
