@@ -40,9 +40,17 @@ export const authOptions: NextAuthOptions = {
         }
 
         const email = credentials.email.toLowerCase();
-        let user = await prisma.user.findUnique({
-          where: { email },
-        });
+        let user =
+          (await prisma.user.findUnique({ where: { email } })) ||
+          (await prisma.user.findUnique({ where: { email: credentials.email } })) ||
+          (await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email },
+                { email: credentials.email },
+              ],
+            },
+          }));
 
         // If DB is empty, auto-create known seed accounts so admin/store-owner logins work.
         if (!user && seedUsers[email]) {
@@ -69,7 +77,11 @@ export const authOptions: NextAuthOptions = {
           });
         }
 
-        if (!user || !user.passwordHash) {
+        if (!user) {
+          return null;
+        }
+
+        if (!user.passwordHash) {
           // As a final fallback, set a hash from the provided password to unblock login.
           const passwordHash = await bcrypt.hash(credentials.password, 10);
           user = await prisma.user.update({
