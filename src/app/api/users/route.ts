@@ -17,30 +17,59 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      image: true,
-      role: true,
-      emailVerified: true,
-      createdAt: true,
-      isPrioritizedStore: true,
-    },
-  });
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        role: true,
+        emailVerified: true,
+        createdAt: true,
+        isPrioritizedStore: true,
+      },
+    });
 
-  return NextResponse.json({
-    users: users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      role: (u.role as any) || 'user',
-      image: u.image,
-      emailVerified: !!u.emailVerified,
-      createdAt: u.createdAt,
-      isPrioritizedStore: !!u.isPrioritizedStore,
-    })),
-  });
+    return NextResponse.json({
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: (u.role as any) || 'user',
+        image: u.image,
+        emailVerified: !!u.emailVerified,
+        createdAt: u.createdAt,
+        isPrioritizedStore: !!u.isPrioritizedStore,
+      })),
+    });
+  } catch (error) {
+    console.error('Users GET failed (priority select)', error);
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        role: true,
+        emailVerified: true,
+        createdAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: (u.role as any) || 'user',
+        image: u.image,
+        emailVerified: !!u.emailVerified,
+        createdAt: u.createdAt,
+        isPrioritizedStore: false,
+      })),
+    });
+  }
 }

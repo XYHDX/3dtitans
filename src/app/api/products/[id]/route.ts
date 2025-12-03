@@ -43,12 +43,22 @@ async function canManage(user: any, product: any) {
 }
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const product = await prisma.product.findUnique({
-    where: { id: params.id },
-    include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
-  });
-  if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ product: mapProduct(product) });
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: params.id },
+      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
+    });
+    if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ product: mapProduct(product) });
+  } catch (error) {
+    console.error('Product GET failed (priority include)', error);
+    const fallback = await prisma.product.findUnique({
+      where: { id: params.id },
+      include: { uploader: { select: { id: true, name: true, email: true } } },
+    });
+    if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ product: mapProduct(fallback) });
+  }
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -77,13 +87,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     updateData.imageGallery = Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : imageGallery;
   }
 
-  const product = await prisma.product.update({
-    where: { id: params.id },
-    data: updateData,
-    include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
-  });
-
-  return NextResponse.json({ product: mapProduct(product) });
+  try {
+    const product = await prisma.product.update({
+      where: { id: params.id },
+      data: updateData,
+      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
+    });
+    return NextResponse.json({ product: mapProduct(product) });
+  } catch (error) {
+    console.error('Product PATCH failed (priority include)', error);
+    const product = await prisma.product.update({
+      where: { id: params.id },
+      data: updateData,
+      include: { uploader: { select: { id: true, name: true, email: true } } },
+    });
+    return NextResponse.json({ product: mapProduct(product) });
+  }
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {

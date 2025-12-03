@@ -36,23 +36,46 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
   }
 
-  const user = await prisma.user.update({
-    where: { id: params.id },
-    data,
-  });
+  try {
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data,
+    });
 
-  return NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: (user.role as any) || 'user',
-      image: user.image,
-      emailVerified: !!user.emailVerified,
-      createdAt: user.createdAt,
-      isPrioritizedStore: !!user.isPrioritizedStore,
-    },
-  });
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user.role as any) || 'user',
+        image: user.image,
+        emailVerified: !!user.emailVerified,
+        createdAt: user.createdAt,
+        isPrioritizedStore: !!user.isPrioritizedStore,
+      },
+    });
+  } catch (error) {
+    console.error('User update failed (priority flag)', error);
+    // Retry without priority flag for legacy DBs.
+    const { isPrioritizedStore, ...rest } = data;
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data: rest,
+    });
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user.role as any) || 'user',
+        image: user.image,
+        emailVerified: !!user.emailVerified,
+        createdAt: user.createdAt,
+        isPrioritizedStore: !!user.isPrioritizedStore,
+      },
+    });
+  }
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
