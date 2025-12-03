@@ -28,6 +28,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data.emailVerified = body.emailVerified ? new Date() : null;
   }
 
+  if (typeof body.isPrioritizedStore === 'boolean') {
+    data.isPrioritizedStore = body.isPrioritizedStore;
+  }
+
   if (!Object.keys(data).length) {
     return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
   }
@@ -46,6 +50,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       image: user.image,
       emailVerified: !!user.emailVerified,
       createdAt: user.createdAt,
+      isPrioritizedStore: !!user.isPrioritizedStore,
     },
   });
 }

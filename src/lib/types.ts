@@ -100,4 +100,5 @@ export type UserProfile = {
   role: 'user' | 'store-owner' | 'admin';
   registrationDate: Timestamp;
   emailVerified?: boolean;
+  isPrioritizedStore?: boolean;
 };

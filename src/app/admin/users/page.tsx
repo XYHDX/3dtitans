@@ -119,6 +119,38 @@ function VerificationSwitch({ user }: { user: UserProfile & { id: string }}) {
   );
 }
 
+function PrioritySwitch({ user }: { user: UserProfile & { id: string } }) {
+  const { toast } = useToast();
+  const { updateUserPriority } = useUsers();
+  const [isPrioritized, setIsPrioritized] = useState(!!user.isPrioritizedStore);
+
+  const handleChange = async (value: boolean) => {
+    setIsPrioritized(value);
+    const ok = await updateUserPriority(user.id, value);
+    if (ok) {
+      toast({
+        title: 'Priority updated',
+        description: `${user.displayName} is now ${value ? 'prioritized' : 'not prioritized'} on the home page.`,
+      });
+    } else {
+      setIsPrioritized(!value);
+      toast({
+        variant: 'destructive',
+        title: 'Update failed',
+        description: 'Could not update store priority.',
+      });
+    }
+  };
+
+  return (
+    <Switch
+      checked={isPrioritized}
+      onCheckedChange={handleChange}
+      disabled={user.role !== 'store-owner'}
+    />
+  );
+}
+
 
 function RoleSelector({ user }: { user: UserProfile & { id: string } }) {
   const { toast } = useToast();
@@ -180,6 +212,7 @@ export default function UsersAdminPage() {
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Verified</TableHead>
+              <TableHead>Prioritized Store</TableHead>
               <TableHead className="text-right">Manage</TableHead>
             </TableRow>
           </TableHeader>
@@ -190,6 +223,7 @@ export default function UsersAdminPage() {
                        <TableCell><div className="flex items-center gap-3"><Skeleton className="h-10 w-10 rounded-full" /><div className='space-y-1'><Skeleton className="h-4 w-24" /><Skeleton className="h-3 w-32" /></div></div></TableCell>
                        <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                        <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                    </TableRow>
                ))
@@ -220,6 +254,9 @@ export default function UsersAdminPage() {
                   <TableCell>
                     <VerificationSwitch user={user} />
                   </TableCell>
+                  <TableCell>
+                    <PrioritySwitch user={user} />
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className='flex items-center justify-end'>
                       <RoleSelector user={user} />
@@ -230,7 +267,7 @@ export default function UsersAdminPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center h-24">
+                <TableCell colSpan={5} className="text-center h-24">
                   No users found.
                 </TableCell>
               </TableRow>

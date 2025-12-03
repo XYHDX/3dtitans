@@ -27,6 +27,7 @@ export async function GET() {
       role: true,
       emailVerified: true,
       createdAt: true,
+      isPrioritizedStore: true,
     },
   });
 
@@ -39,6 +40,7 @@ export async function GET() {
       image: u.image,
       emailVerified: !!u.emailVerified,
       createdAt: u.createdAt,
+      isPrioritizedStore: !!u.isPrioritizedStore,
     })),
   });
 }

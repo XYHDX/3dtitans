@@ -16,6 +16,7 @@ export function useSessionUser() {
       displayName: base.name || base.email || 'User',
       photoURL: base.image || null,
       role: (base.role as any) || 'user',
+      isPrioritizedStore: (base as any).isPrioritizedStore || false,
       registrationDate: { toDate: () => new Date() },
       emailVerified: (base as any).emailVerified ? true : false,
     };
@@ -73,6 +74,7 @@ type AdminUser = {
   role: 'user' | 'store-owner' | 'admin';
   registrationDate: { toDate: () => Date };
   emailVerified?: boolean;
+  isPrioritizedStore?: boolean;
 };
 
 export function useUsers() {
@@ -88,6 +90,7 @@ export function useUsers() {
       role: (user.role as any) || 'user',
       registrationDate: { toDate: () => new Date(user.createdAt || Date.now()) },
       emailVerified: !!user.emailVerified,
+      isPrioritizedStore: !!user.isPrioritizedStore,
     };
   }, []);
 
@@ -142,6 +145,20 @@ export function useUsers() {
     return true;
   };
 
+  const updateUserPriority = async (userId: string, isPrioritizedStore: boolean) => {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPrioritizedStore }),
+    });
+    if (!res.ok) {
+      console.error('Failed to update store priority');
+      return false;
+    }
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, isPrioritizedStore } : u)));
+    return true;
+  };
+
   const deleteUser = async (userId: string) => {
     const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -152,5 +169,5 @@ export function useUsers() {
     return true;
   };
 
-  return { data: users, users, loading, refresh, updateUserRole, updateUserVerification, deleteUser };
+  return { data: users, users, loading, refresh, updateUserRole, updateUserVerification, updateUserPriority, deleteUser };
 }

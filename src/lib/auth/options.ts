@@ -105,6 +105,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = (user as any).id;
         token.role = (user as any).role || 'user';
+        token.isPrioritizedStore = (user as any).isPrioritizedStore || false;
       }
       return token;
     },
@@ -112,6 +113,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = (token.role as string) || 'user';
+        (session.user as any).isPrioritizedStore = token.isPrioritizedStore || false;
       }
       return session;
     },
