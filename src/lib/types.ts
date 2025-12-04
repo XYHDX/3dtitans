@@ -8,7 +8,10 @@ export type Product = {
   name: string;
   category: string;
   price: number;
-  uploaderName?: string;
+  storeId?: string | null;
+  storeName?: string;
+  storeSlug?: string;
+  storeAvatarUrl?: string | null;
   rating?: number;
   reviewCount?: number;
   imageUrl: string;
@@ -22,6 +25,21 @@ export type Product = {
   uploaderId: string;
   uploaderName: string;
   isPrioritizedStore?: boolean;
+};
+
+export type Store = {
+  id: string;
+  name: string;
+  slug: string;
+  bio?: string;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
+  websiteUrl?: string | null;
+  ownerId: string;
+  isPublished: boolean;
+  productsCount?: number;
+  createdAt?: Timestamp | Date | string;
+  updatedAt?: Timestamp | Date | string;
 };
 
 export type Upload = {

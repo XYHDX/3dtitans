@@ -23,6 +23,7 @@ model User {
   products         Product[]
   uploads          Upload[]
   uploadsAssigned  Upload[]          @relation("UploadAssignedOwner")
+  stores           Store[]
   orders           Order[]           @relation("UserOrders")
   orderAssignments OrderAssignment[] @relation("AssignmentOwner")
 
@@ -49,6 +50,8 @@ model Product {
 
   uploader   User   @relation(fields: [uploaderId], references: [id])
   uploaderId String
+  store      Store? @relation(fields: [storeId], references: [id])
+  storeId    String?
 
   orderItems OrderItem[]
 }
@@ -186,4 +189,20 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model Store {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  bio         String?
+  avatarUrl   String?
+  coverUrl    String?
+  websiteUrl  String?
+  isPublished Boolean  @default(false)
+  owner       User     @relation(fields: [ownerId], references: [id])
+  ownerId     String
+  products    Product[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

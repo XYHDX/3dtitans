@@ -37,6 +37,7 @@ export function Header() {
     () => {
       const links = [
         { href: '/products', label: t('nav.products') },
+        { href: '/stores', label: t('nav.stores') },
         { href: '/upload', label: t('nav.upload') },
         { href: '/about', label: t('nav.about') },
       ];

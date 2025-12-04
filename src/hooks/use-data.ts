@@ -8,17 +8,24 @@ import type {
   SiteSettings,
   ContactSubmission,
   NewsletterSubscription,
+  Store,
 } from '@/lib/types';
 
 // Products
-export function useProducts(filter?: { uploaderId?: string }) {
+export function useProducts(filter?: { uploaderId?: string; storeId?: string; storeSlug?: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/products');
+      const params = new URLSearchParams();
+      if (filter?.uploaderId) params.set('uploaderId', filter.uploaderId);
+      if (filter?.storeId) params.set('storeId', filter.storeId);
+      if (filter?.storeSlug) params.set('storeSlug', filter.storeSlug);
+      const qs = params.toString();
+
+      const res = await fetch(`/api/products${qs ? `?${qs}` : ''}`);
       const data = await res.json();
       setProducts(data.products || []);
     } catch (error) {
@@ -27,7 +34,7 @@ export function useProducts(filter?: { uploaderId?: string }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter?.storeId, filter?.storeSlug, filter?.uploaderId]);
 
   useEffect(() => {
     refresh();
@@ -67,12 +74,13 @@ export function useProducts(filter?: { uploaderId?: string }) {
   const data = useMemo(() => {
     let result = products;
     if (filter?.uploaderId) result = result.filter((p) => p.uploaderId === filter.uploaderId);
+    if (filter?.storeId) result = result.filter((p) => p.storeId === filter.storeId);
 
     const sorted = [...result].sort((a, b) => {
       const prioritizedDiff = Number(!!b.isPrioritizedStore) - Number(!!a.isPrioritizedStore);
       if (prioritizedDiff !== 0) return prioritizedDiff;
-      const uploaderA = (a.uploaderName || '').toLowerCase();
-      const uploaderB = (b.uploaderName || '').toLowerCase();
+      const uploaderA = (a.storeName || a.uploaderName || '').toLowerCase();
+      const uploaderB = (b.storeName || b.uploaderName || '').toLowerCase();
       const uploaderDiff = uploaderA.localeCompare(uploaderB);
       if (uploaderDiff !== 0) return uploaderDiff;
       const ratingDiff = (b.rating || 0) - (a.rating || 0);
@@ -92,6 +100,100 @@ export function useProducts(filter?: { uploaderId?: string }) {
   }, [products, filter?.uploaderId]);
 
   return { data, loading, refresh, addProduct, updateProduct, deleteProduct };
+}
+
+// Stores
+export function useStores(filter?: { ownerId?: string; includeUnpublished?: boolean }, options?: { skipFetch?: boolean }) {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter?.ownerId) params.set('ownerId', filter.ownerId);
+      if (filter?.includeUnpublished) params.set('published', 'false');
+      const qs = params.toString();
+      const res = await fetch(`/api/stores${qs ? `?${qs}` : ''}`);
+      const data = await res.json();
+      setStores(data.stores || []);
+    } catch (error) {
+      console.error('Failed to fetch stores', error);
+      setStores([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter?.includeUnpublished, filter?.ownerId, options?.skipFetch]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const createStore = useCallback(async (payload: Partial<Store> & { name: string; slug: string }) => {
+    const res = await fetch('/api/stores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setStores((prev) => {
+      const filtered = prev.filter((s) => s.id !== data.store.id);
+      return [data.store, ...filtered];
+    });
+    return data.store as Store;
+  }, []);
+
+  const updateStore = useCallback(async (slug: string, patch: Partial<Store>) => {
+    const res = await fetch(`/api/stores/${slug}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setStores((prev) => prev.map((s) => (s.id === data.store.id ? data.store : s)));
+    return data.store as Store;
+  }, []);
+
+  return { data: stores, loading, refresh, createStore, updateStore };
+}
+
+export function useStore(slug?: string, options?: { skipFetch?: boolean }) {
+  const [store, setStore] = useState<Store | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!slug) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/stores/${slug}`);
+      const data = await res.json();
+      setStore(data.store || null);
+    } catch (error) {
+      console.error('Failed to fetch store', error);
+      setStore(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [options?.skipFetch, refresh]);
+
+  return { data: store, loading, refresh };
 }
 
 // Uploads

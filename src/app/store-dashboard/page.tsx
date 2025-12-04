@@ -2,12 +2,12 @@
 'use client';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import type { Product, Order } from '@/lib/types';
-import { Package, ShoppingBag, UploadCloud } from 'lucide-react';
+import { Home, Package, ShoppingBag, UploadCloud } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useSessionUser } from '@/hooks/use-session';
-import { useProducts, useOrders, useUploads } from '@/hooks/use-data';
+import { useProducts, useOrders, useUploads, useStores } from '@/hooks/use-data';
 
 export default function StoreDashboardPage() {
     const { user } = useSessionUser();
@@ -18,8 +18,13 @@ export default function StoreDashboardPage() {
         user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : undefined
     );
     const { data: assignedUploads, loading: uploadsLoading } = useUploads();
+    const { data: ownerStores, loading: storesLoading } = useStores(
+        user?.role === 'store-owner' && user?.id ? { ownerId: user.id, includeUnpublished: true } : undefined,
+        { skipFetch: !user?.id || user?.role !== 'store-owner' }
+    );
 
-    const isLoading = productsLoading || assignedOrdersLoading || uploadsLoading;
+    const isLoading = productsLoading || assignedOrdersLoading || uploadsLoading || storesLoading;
+    const store = ownerStores?.[0];
 
     if (!user) {
         return (
@@ -61,6 +66,25 @@ export default function StoreDashboardPage() {
                 </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2 mt-8">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            Store Profile
+                        </CardTitle>
+                        <Home className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : (
+                            <div className="text-2xl font-bold">{store?.name || 'Not set'}</div>
+                        )}
+                        <p className="text-xs text-muted-foreground flex items-center gap-2">
+                           {store?.isPublished ? 'Published' : 'Draft'}
+                           <Link href="/store-dashboard/profile" className="underline">
+                             Edit profile
+                           </Link>
+                        </p>
+                    </CardContent>
+                </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">

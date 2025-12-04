@@ -11,6 +11,7 @@ import { useOrders, useUploads } from '@/hooks/use-data';
 const allNavItems = [
   { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Home', roles: ['admin'] },
   { href: '/store-dashboard', icon: Home, label: 'Store Home', roles: ['store-owner'] },
+  { href: '/store-dashboard/profile', icon: User, label: 'Store Profile', roles: ['store-owner'] },
   { href: '/admin/products', icon: Package, label: 'Products', roles: ['admin', 'store-owner'] },
   { href: '/admin/orders', icon: ShoppingBag, label: 'Orders', roles: ['admin', 'store-owner'] },
   { href: '/admin/pool', icon: Component, label: 'Pool', roles: ['admin', 'store-owner'] },

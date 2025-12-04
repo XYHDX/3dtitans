@@ -87,6 +87,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
   const rating = product.rating || 4.5;
   const reviewCount = product.reviewCount || 117;
+  const storeName = product.storeName || product.uploaderName || product.uploaderEmail || 'Store';
   const quantityInCart = getItemQuantity(product.id);
   const goToPrev = () => {
     if (!gallery.length) return;
@@ -194,6 +195,18 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
           <div className="flex flex-col p-8">
             <h1 className="font-headline text-4xl lg:text-5xl">{product.name}</h1>
             <p className="text-muted-foreground mt-2 text-lg">{product.category}</p>
+            <div className="text-sm text-muted-foreground mt-2">
+              {product.storeSlug ? (
+                <>
+                  Store:{' '}
+                  <Link href={`/stores/${product.storeSlug}`} className="font-medium text-primary hover:underline">
+                    {storeName}
+                  </Link>
+                </>
+              ) : (
+                <>By {storeName}</>
+              )}
+            </div>
 
             <div className="flex items-center mt-4">
               <div className="flex items-center text-accent">

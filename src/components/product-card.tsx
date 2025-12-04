@@ -24,7 +24,8 @@ export function ProductCard({ product }: ProductCardProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { user } = useSessionUser();
-  const uploaderName = product.uploaderName || product.uploaderEmail || 'Store';
+  const storeName = product.storeName || product.uploaderName || product.uploaderEmail || 'Store';
+  const storeHref = product.storeSlug ? `/stores/${product.storeSlug}` : null;
 
   const handleAddToCart = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -65,7 +66,13 @@ export function ProductCard({ product }: ProductCardProps) {
           />
         </Link>
         <Badge variant="secondary" className="absolute top-3 left-3">
-          {uploaderName}
+          {storeHref ? (
+            <Link href={storeHref} className="hover:underline">
+              {storeName}
+            </Link>
+          ) : (
+            storeName
+          )}
         </Badge>
         {product.has3dPreview && (
           <Badge variant="secondary" className="absolute top-3 right-3">

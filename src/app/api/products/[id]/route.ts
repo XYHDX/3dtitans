@@ -27,6 +27,10 @@ function mapProduct(product: any) {
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
     uploaderEmail: product.uploaderEmail || product.uploader?.email || '',
+    storeId: product.storeId || null,
+    storeName: product.store?.name,
+    storeSlug: product.store?.slug,
+    storeAvatarUrl: product.store?.avatarUrl || null,
     rating: product.rating || 0,
     reviewCount: product.reviewCount || 0,
     has3dPreview: product.has3dPreview || false,
@@ -82,7 +86,10 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
     const product = await prisma.product.findUnique({
       where: { id: params.id },
-      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
+      include: {
+        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+      },
     });
     if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const mapped = mapProduct(product);
@@ -92,7 +99,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     console.error('Product GET failed (priority include)', error);
     const fallback = await prisma.product.findUnique({
       where: { id: params.id },
-      include: { uploader: { select: { id: true, name: true, email: true } } },
+      include: { uploader: { select: { id: true, name: true, email: true } }, store: { select: { id: true, name: true, slug: true, avatarUrl: true } } },
     });
     if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const prioritizedIds = await getPrioritizedIds();
@@ -114,6 +121,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const body = await req.json();
   const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery } = body;
+  const { storeId } = body as { storeId?: string };
 
   const updateData: any = {};
   if (name !== undefined) updateData.name = name;
@@ -124,6 +132,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
   if (imageHint !== undefined) updateData.imageHint = imageHint;
   if (has3dPreview !== undefined) updateData.has3dPreview = has3dPreview;
+  if (storeId !== undefined) {
+    if (storeId === null) {
+      updateData.storeId = null;
+    } else {
+      const store = await prisma.store.findUnique({ where: { id: storeId } });
+      if (!store) return NextResponse.json({ error: 'Invalid storeId' }, { status: 400 });
+      if (user.role === 'store-owner' && store.ownerId !== user.id) {
+        return NextResponse.json({ error: 'Unauthorized for this store' }, { status: 403 });
+      }
+      updateData.storeId = storeId;
+    }
+  }
   if (imageGallery !== undefined) {
     updateData.imageGallery = Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : imageGallery;
   }
@@ -132,7 +152,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const product = await prisma.product.update({
       where: { id: params.id },
       data: updateData,
-      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
+      include: {
+        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+      },
     });
     return NextResponse.json({ product: mapProduct(product) });
   } catch (error) {
@@ -140,7 +163,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const product = await prisma.product.update({
       where: { id: params.id },
       data: updateData,
-      include: { uploader: { select: { id: true, name: true, email: true } } },
+      include: {
+        uploader: { select: { id: true, name: true, email: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+      },
     });
     const prioritizedIds = await getPrioritizedIds();
     const mapped = mapProduct(product);

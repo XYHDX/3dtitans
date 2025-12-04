@@ -26,6 +26,10 @@ function mapProduct(product: any) {
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
     uploaderEmail: product.uploaderEmail || product.uploader?.email || '',
+    storeId: product.storeId || null,
+    storeName: product.store?.name,
+    storeSlug: product.store?.slug,
+    storeAvatarUrl: product.store?.avatarUrl || null,
     rating: product.rating || 0,
     reviewCount: product.reviewCount || 0,
     has3dPreview: product.has3dPreview || false,
@@ -68,39 +72,77 @@ async function getPrioritizedIds() {
   }
 }
 
-export async function GET() {
+async function buildFilters(req: Request) {
+  const url = new URL(req.url);
+  const storeId = url.searchParams.get('storeId') || undefined;
+  const storeSlug = url.searchParams.get('storeSlug') || undefined;
+  const uploaderId = url.searchParams.get('uploaderId') || undefined;
+
+  const where: any = {};
+  if (storeId) where.storeId = storeId;
+  if (uploaderId) where.uploaderId = uploaderId;
+
+  if (storeSlug) {
+    const store = await prisma.store.findUnique({ where: { slug: storeSlug } });
+    if (!store) {
+      return { where: { id: { in: [] } } };
+    }
+    // Include products explicitly linked to the store plus any legacy products by the same owner.
+    where.OR = [{ storeId: store.id }, { uploaderId: store.ownerId }];
+  }
+
+  return { where };
+}
+
+export async function GET(req: Request) {
   try {
     const prioritizedIds = await getPrioritizedIds();
+    const { where } = await buildFilters(req);
 
     const prioritized = await prisma.product.findMany({
+      where,
       orderBy: [
         { uploader: { isPrioritizedStore: 'desc' } },
         { rating: 'desc' },
         { createdAt: 'desc' },
       ],
-      include: { uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } } },
+      include: {
+        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+      },
     });
     return NextResponse.json({
-      products: prioritized.map((p) => ({
-        ...mapProduct(p),
-        isPrioritizedStore: mapProduct(p).isPrioritizedStore || prioritizedIds.has(p.uploaderId),
-      })),
+      products: prioritized.map((p) => {
+        const mapped = mapProduct(p);
+        return {
+          ...mapped,
+          isPrioritizedStore: mapped.isPrioritizedStore || prioritizedIds.has(p.uploaderId),
+        };
+      }),
     });
   } catch (error) {
     console.error('Products GET failed (priority ordering)', error);
     // Fallback for environments without isPrioritizedStore column.
     try {
       const prioritizedIds = await getPrioritizedIds();
+      const { where } = await buildFilters(req);
 
       const products = await prisma.product.findMany({
+        where,
         orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
-        include: { uploader: { select: { id: true, name: true, email: true } } },
+        include: {
+          uploader: { select: { id: true, name: true, email: true } },
+          store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+        },
       });
       return NextResponse.json({
-        products: products.map((p) => ({
-          ...mapProduct(p),
-          isPrioritizedStore: mapProduct(p).isPrioritizedStore || prioritizedIds.has(p.uploaderId),
-        })),
+        products: products.map((p) => {
+          const mapped = mapProduct(p);
+          return {
+            ...mapped,
+            isPrioritizedStore: mapped.isPrioritizedStore || prioritizedIds.has(p.uploaderId),
+          };
+        }),
       });
     } catch (err) {
       console.error('Products GET fallback failed', err);
@@ -119,9 +161,21 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery } = body;
+    let { storeId } = body as { storeId?: string };
 
     if (!name || !category || !price || !imageUrl) {
       return NextResponse.json({ error: 'Name, category, price, and imageUrl are required' }, { status: 400 });
+    }
+
+    if (storeId) {
+      const store = await prisma.store.findUnique({ where: { id: storeId } });
+      if (!store) return NextResponse.json({ error: 'Invalid storeId' }, { status: 400 });
+      if (user.role === 'store-owner' && store.ownerId !== user.id) {
+        return NextResponse.json({ error: 'Unauthorized for this store' }, { status: 403 });
+      }
+    } else if (user.role === 'store-owner') {
+      const ownedStore = await prisma.store.findFirst({ where: { ownerId: user.id } });
+      storeId = ownedStore?.id;
     }
 
     const product = await prisma.product.create({
@@ -137,6 +191,11 @@ export async function POST(req: Request) {
         imageGallery: Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : JSON.stringify([imageUrl]),
         uploaderId: user.id,
         uploaderName: user.name || user.email || 'Uploader',
+        storeId: storeId || null,
+      },
+      include: {
+        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
       },
     });
 

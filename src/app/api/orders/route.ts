@@ -36,56 +36,62 @@ function mapOrder(order: any) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const user = session?.user;
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const baseInclude = { items: true, assignments: { include: { owner: true } } };
+    const baseInclude = { items: true, assignments: { include: { owner: true } } };
 
-  // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
-  // Restrict to admin view to avoid side-effects on every store-owner request.
-  if (user.role === 'admin') {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const stale = await prisma.order.findMany({
-      where: { status: 'AwaitingAcceptance', createdAt: { lt: cutoff }, assignments: { some: {} } },
-      select: { id: true },
-    });
-    if (stale.length) {
-      const staleIds = stale.map((o) => o.id);
-      await prisma.$transaction([
-        prisma.orderAssignment.deleteMany({ where: { orderId: { in: staleIds } } }),
-        prisma.order.updateMany({ where: { id: { in: staleIds } }, data: { status: 'Pooled' } }),
-      ]);
+    // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
+    // Restrict to admin view to avoid side-effects on every store-owner request.
+    if (user.role === 'admin') {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const stale = await prisma.order.findMany({
+        where: { status: 'AwaitingAcceptance', createdAt: { lt: cutoff }, assignments: { some: {} } },
+        select: { id: true },
+      });
+      if (stale.length) {
+        const staleIds = stale.map((o) => o.id);
+        await prisma.$transaction([
+          prisma.orderAssignment.deleteMany({ where: { orderId: { in: staleIds } } }),
+          prisma.order.updateMany({ where: { id: { in: staleIds } }, data: { status: 'Pooled' } }),
+        ]);
+      }
     }
-  }
 
-  let orders;
-  if (user.role === 'admin') {
-    orders = await prisma.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: baseInclude,
-    });
-  } else if (user.role === 'store-owner') {
-    orders = await prisma.order.findMany({
-      where: {
-        OR: [
-          { assignments: { some: { ownerId: user.id } } },
-          { assignments: { some: { ownerEmail: user.email || '' } } },
-          { status: 'Pooled' },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      include: baseInclude,
-    });
-  } else {
-    orders = await prisma.order.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      include: baseInclude,
-    });
-  }
+    let orders;
+    if (user.role === 'admin') {
+      orders = await prisma.order.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: baseInclude,
+      });
+    } else if (user.role === 'store-owner') {
+      orders = await prisma.order.findMany({
+        where: {
+          OR: [
+            { assignments: { some: { ownerId: user.id } } },
+            { assignments: { some: { ownerEmail: user.email || '' } } },
+            { status: 'Pooled' },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        include: baseInclude,
+      });
+    } else {
+      orders = await prisma.order.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        include: baseInclude,
+      });
+    }
 
-  return NextResponse.json({ orders: orders.map(mapOrder) });
+    return NextResponse.json({ orders: orders.map(mapOrder) });
+  } catch (error) {
+    console.error('Orders GET failed', error);
+    const message = (error as any)?.message || 'Failed to load orders';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
