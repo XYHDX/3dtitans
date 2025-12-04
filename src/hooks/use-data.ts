@@ -71,6 +71,10 @@ export function useProducts(filter?: { uploaderId?: string }) {
     const sorted = [...result].sort((a, b) => {
       const prioritizedDiff = Number(!!b.isPrioritizedStore) - Number(!!a.isPrioritizedStore);
       if (prioritizedDiff !== 0) return prioritizedDiff;
+      const uploaderA = (a.uploaderName || '').toLowerCase();
+      const uploaderB = (b.uploaderName || '').toLowerCase();
+      const uploaderDiff = uploaderA.localeCompare(uploaderB);
+      if (uploaderDiff !== 0) return uploaderDiff;
       const ratingDiff = (b.rating || 0) - (a.rating || 0);
       if (ratingDiff !== 0) return ratingDiff;
       const reviewsDiff = (b.reviewCount || 0) - (a.reviewCount || 0);

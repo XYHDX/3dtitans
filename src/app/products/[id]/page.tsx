@@ -139,6 +139,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                   data-ai-hint={product.imageHint}
                 />
               </div>
+              <Badge variant="secondary" className="absolute top-4 left-4 sm:top-6 sm:left-6">
+                {product.uploaderName || product.uploaderEmail || 'Store'}
+              </Badge>
               <Button
                 variant="ghost"
                 size="icon"

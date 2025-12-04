@@ -24,6 +24,7 @@ export function ProductCard({ product }: ProductCardProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { user } = useSessionUser();
+  const uploaderName = product.uploaderName || product.uploaderEmail || 'Store';
 
   const handleAddToCart = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -63,6 +64,9 @@ export function ProductCard({ product }: ProductCardProps) {
             data-ai-hint={product.imageHint}
           />
         </Link>
+        <Badge variant="secondary" className="absolute top-3 left-3">
+          {uploaderName}
+        </Badge>
         {product.has3dPreview && (
           <Badge variant="secondary" className="absolute top-3 right-3">
             <Box className="h-3 w-3 mr-1.5" />
