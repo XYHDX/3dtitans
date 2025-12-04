@@ -50,13 +50,13 @@ export default function OrderPoolPage() {
                 <CardDescription>
                     These orders have been released by their original assignees. Claim one to begin processing.
                 </CardDescription>
-                <div className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 shadow-sm flex items-start gap-3">
-                  <div className="mt-0.5 text-destructive">
+                <div className="mt-3 rounded-lg border border-amber-500/50 bg-amber-100 px-4 py-3 shadow-sm flex items-start gap-3">
+                  <div className="mt-0.5 text-amber-800">
                     <AlertTriangle className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-destructive font-bold">Important</p>
-                    <p className="text-sm font-semibold text-destructive">
+                    <p className="text-xs uppercase tracking-wide text-amber-800 font-bold">Important</p>
+                    <p className="text-sm font-semibold text-amber-900">
                       Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
                     </p>
                   </div>
