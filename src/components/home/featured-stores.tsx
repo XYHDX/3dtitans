@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useStores } from '@/hooks/use-data';
 import { useTranslation } from '../language-provider';
 import { StoreCard } from '../store-card';
@@ -11,7 +12,18 @@ import { ArrowRight } from 'lucide-react';
 export function FeaturedStores() {
   const { data: stores, loading } = useStores();
   const { t } = useTranslation();
-  const topStores = (stores || []).slice(0, 3);
+  const topStores = useMemo(() => {
+    const getDateValue = (value?: any) => {
+      if (!value) return 0;
+      const raw = typeof value === 'object' && 'toDate' in value ? value.toDate() : new Date(value as any);
+      const date = raw instanceof Date ? raw : new Date(raw);
+      return isNaN(date.getTime()) ? 0 : date.getTime();
+    };
+
+    return [...(stores || [])]
+      .sort((a, b) => getDateValue(b.updatedAt || b.createdAt) - getDateValue(a.updatedAt || a.createdAt))
+      .slice(0, 3);
+  }, [stores]);
 
   return (
     <section className="py-16 md:py-24">
