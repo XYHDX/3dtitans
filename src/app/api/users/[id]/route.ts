@@ -177,10 +177,42 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   }
 
   try {
-    await prisma.user.delete({
-      where: { id: params.id },
+    const userId = params.id;
+
+    await prisma.$transaction(async (tx) => {
+      // Gather related records to detach before deletion to avoid FK failures.
+      const stores = await tx.store.findMany({ where: { ownerId: userId }, select: { id: true } });
+      const storeIds = stores.map((s) => s.id);
+
+      const uploaderProducts = await tx.product.findMany({ where: { uploaderId: userId }, select: { id: true } });
+      const storeProducts = storeIds.length
+        ? await tx.product.findMany({ where: { storeId: { in: storeIds } }, select: { id: true } })
+        : [];
+
+      const productIds = Array.from(new Set([...uploaderProducts, ...storeProducts].map((p) => p.id)));
+
+      if (productIds.length) {
+        await tx.orderItem.updateMany({ where: { productId: { in: productIds } }, data: { productId: null } });
+      }
+
+      await tx.orderAssignment.deleteMany({ where: { ownerId: userId } });
+      await tx.order.updateMany({ where: { userId }, data: { userId: null } });
+
+      await tx.upload.updateMany({ where: { assignedOwnerId: userId }, data: { assignedOwnerId: null, assignedOwnerEmail: null } });
+      await tx.upload.deleteMany({ where: { userId } });
+
+      if (productIds.length) {
+        await tx.product.deleteMany({ where: { id: { in: productIds } } });
+      }
+
+      if (storeIds.length) {
+        await tx.store.deleteMany({ where: { id: { in: storeIds } } });
+      }
+
+      await tx.user.delete({ where: { id: userId } });
     });
-    return NextResponse.json({ ok: true });
+
+    return NextResponse.json({ ok: true, message: 'User and related data removed.' });
   } catch (error: any) {
     console.error('User delete failed', error);
     const code = error?.code;
