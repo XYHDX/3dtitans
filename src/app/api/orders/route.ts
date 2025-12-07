@@ -66,28 +66,40 @@ export async function GET() {
     }
 
     let orders;
-    if (user.role === 'admin') {
-      orders = await prisma.order.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: baseInclude,
-      });
-    } else if (user.role === 'store-owner') {
-      orders = await prisma.order.findMany({
-        where: {
-          OR: [
-            { assignments: { some: { ownerId: user.id } } },
-            { assignments: { some: { ownerEmail: user.email || '' } } },
-            { status: 'Pooled' },
-          ],
-        },
-        orderBy: { createdAt: 'desc' },
-        include: baseInclude,
-      });
-    } else {
-      orders = await prisma.order.findMany({
+    const fetchOrders = async () => {
+      if (user.role === 'admin') {
+        return prisma.order.findMany({
+          orderBy: { createdAt: 'desc' },
+          include: baseInclude,
+        });
+      }
+      if (user.role === 'store-owner') {
+        return prisma.order.findMany({
+          where: {
+            OR: [
+              { assignments: { some: { ownerId: user.id } } },
+              { assignments: { some: { ownerEmail: user.email || '' } } },
+              { status: 'Pooled' },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          include: baseInclude,
+        });
+      }
+      return prisma.order.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
         include: baseInclude,
+      });
+    };
+
+    try {
+      orders = await fetchOrders();
+    } catch (fetchError) {
+      console.error('Orders fetch failed with relations, retrying without includes', fetchError);
+      // Fallback without relation includes to avoid breaking the endpoint due to bad data.
+      orders = await prisma.order.findMany({
+        orderBy: { createdAt: 'desc' },
       });
     }
 
