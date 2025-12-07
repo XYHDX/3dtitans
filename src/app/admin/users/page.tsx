@@ -52,11 +52,11 @@ function DeleteUserAlert({ userId, userName }: { userId: string, userName: strin
     const handleDelete = async () => {
         setIsDeleting(true);
         try {
-            const ok = await deleteUser(userId);
-            if (!ok) throw new Error('Delete failed');
+            const result = await deleteUser(userId);
+            if (!result.ok) throw new Error(result.message || 'Delete failed');
             toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Unable to delete user.' });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Delete Failed', description: error?.message || 'Unable to delete user.' });
         } finally {
             setIsDeleting(false);
         }

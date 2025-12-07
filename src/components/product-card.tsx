@@ -65,7 +65,7 @@ export function ProductCard({ product }: ProductCardProps) {
             data-ai-hint={product.imageHint}
           />
         </Link>
-        <Badge variant="secondary" className="absolute top-3 left-3">
+        <Badge variant="secondary" className="absolute top-3 right-3">
           {storeHref ? (
             <Link href={storeHref} className="hover:underline">
               {storeName}
@@ -75,7 +75,7 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
         </Badge>
         {product.has3dPreview && (
-          <Badge variant="secondary" className="absolute top-3 right-3">
+          <Badge variant="secondary" className="absolute top-3 left-3">
             <Box className="h-3 w-3 mr-1.5" />
             {t('productCard.preview')}
           </Badge>

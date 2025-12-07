@@ -1,5 +1,6 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
@@ -175,9 +176,28 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await prisma.user.delete({
-    where: { id: params.id },
-  });
+  try {
+    await prisma.user.delete({
+      where: { id: params.id },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error: any) {
+    console.error('User delete failed', error);
+    const code = error?.code;
+    let status = 400;
+    let message = error?.message || 'Failed to delete user';
 
-  return NextResponse.json({ ok: true });
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2003') {
+        status = 409;
+        message =
+          'Cannot delete this user while they still own products, stores, uploads, or orders. Remove or reassign those records first.';
+      } else if (error.code === 'P2025') {
+        status = 404;
+        message = 'User not found or already deleted.';
+      }
+    }
+
+    return NextResponse.json({ error: message, code }, { status });
+  }
 }

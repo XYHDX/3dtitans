@@ -46,17 +46,22 @@ export async function GET() {
     // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
     // Restrict to admin view to avoid side-effects on every store-owner request.
     if (user.role === 'admin') {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const stale = await prisma.order.findMany({
-        where: { status: 'AwaitingAcceptance', createdAt: { lt: cutoff }, assignments: { some: {} } },
-        select: { id: true },
-      });
-      if (stale.length) {
-        const staleIds = stale.map((o) => o.id);
-        await prisma.$transaction([
-          prisma.orderAssignment.deleteMany({ where: { orderId: { in: staleIds } } }),
-          prisma.order.updateMany({ where: { id: { in: staleIds } }, data: { status: 'Pooled' } }),
-        ]);
+      try {
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const stale = await prisma.order.findMany({
+          where: { status: 'AwaitingAcceptance', createdAt: { lt: cutoff }, assignments: { some: {} } },
+          select: { id: true },
+        });
+        if (stale.length) {
+          const staleIds = stale.map((o) => o.id);
+          await prisma.$transaction([
+            prisma.orderAssignment.deleteMany({ where: { orderId: { in: staleIds } } }),
+            prisma.order.updateMany({ where: { id: { in: staleIds } }, data: { status: 'Pooled' } }),
+          ]);
+        }
+      } catch (error) {
+        console.error('Orders auto-pool step failed', error);
+        // Do not block the response on this maintenance task.
       }
     }
 
@@ -87,10 +92,10 @@ export async function GET() {
     }
 
     return NextResponse.json({ orders: orders.map(mapOrder) });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Orders GET failed', error);
-    const message = (error as any)?.message || 'Failed to load orders';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error?.message || 'Failed to load orders';
+    return NextResponse.json({ error: message, code: error?.code }, { status: 500 });
   }
 }
 

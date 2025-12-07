@@ -170,14 +170,36 @@ export function useUsers() {
     return { ok: true };
   };
 
-  const deleteUser = async (userId: string) => {
-    const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-    if (!res.ok) {
-      console.error('Failed to delete user');
-      return false;
+  const deleteUser = async (userId: string): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      const parseBody = async () => {
+        try {
+          return await res.json();
+        } catch {
+          try {
+            const text = await res.text();
+            return text ? { error: text } : {};
+          } catch {
+            return {};
+          }
+        }
+      };
+
+      if (!res.ok) {
+        const body = await parseBody();
+        const message = (body as any)?.error || 'Failed to delete user';
+        console.error('Failed to delete user', message, body);
+        return { ok: false, message };
+      }
+
+      const body = await parseBody();
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      return { ok: true, message: (body as any)?.message };
+    } catch (error: any) {
+      console.error('Failed to delete user', error);
+      return { ok: false, message: error?.message || 'Failed to delete user' };
     }
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
-    return true;
   };
 
   return { data: users, users, loading, refresh, updateUserRole, updateUserVerification, updateUserPriority, deleteUser };
