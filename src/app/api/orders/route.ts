@@ -28,7 +28,7 @@ function mapOrder(order: any) {
     },
     phoneNumber: order.phoneNumber,
     customerEmail: order.customerEmail || '',
-    notes: order.notes || '',
+    notes: (order as any).notes || '',
     predictedFinishDate: order.predictedFinishAt || undefined,
     isPrioritized: order.isPrioritized || false,
     assignedAdminIds: order.assignments?.map((a: any) => a.ownerId) || [],
@@ -41,7 +41,26 @@ export async function GET() {
     const user = session?.user;
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const baseInclude = { items: true, assignments: { include: { owner: true } } };
+    const baseSelect = {
+      id: true,
+      userId: true,
+      createdAt: true,
+      updatedAt: true,
+      totalAmount: true,
+      status: true,
+      shippingName: true,
+      shippingAddress1: true,
+      shippingCity: true,
+      shippingPostalCode: true,
+      shippingCountry: true,
+      phoneNumber: true,
+      customerEmail: true,
+      predictedFinishAt: true,
+      isPrioritized: true,
+      // notes intentionally omitted to tolerate databases missing this column.
+      items: { select: { productId: true, name: true, quantity: true, price: true, imageUrl: true } },
+      assignments: { select: { ownerId: true, ownerEmail: true, owner: { select: { id: true } } } },
+    };
 
     // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
     // Restrict to admin view to avoid side-effects on every store-owner request.
@@ -70,7 +89,7 @@ export async function GET() {
       if (user.role === 'admin') {
         return prisma.order.findMany({
           orderBy: { createdAt: 'desc' },
-          include: baseInclude,
+          select: baseSelect,
         });
       }
       if (user.role === 'store-owner') {
@@ -83,13 +102,13 @@ export async function GET() {
             ],
           },
           orderBy: { createdAt: 'desc' },
-          include: baseInclude,
+          select: baseSelect,
         });
       }
       return prisma.order.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
-        include: baseInclude,
+        select: baseSelect,
       });
     };
 
@@ -100,6 +119,7 @@ export async function GET() {
       // Fallback without relation includes to avoid breaking the endpoint due to bad data.
       orders = await prisma.order.findMany({
         orderBy: { createdAt: 'desc' },
+        select: baseSelect,
       });
     }
 
@@ -117,7 +137,7 @@ export async function POST(req: Request) {
   if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
   const body = await req.json();
-  const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes } = body;
+  const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized } = body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'Items are required' }, { status: 400 });
@@ -156,8 +176,7 @@ export async function POST(req: Request) {
       shippingCountry: shippingAddress.country,
       phoneNumber,
       customerEmail: customerEmail || user?.email,
-      notes: notes || '',
-      isPrioritized: !!isPrioritized,
+    isPrioritized: !!isPrioritized,
       items: {
         create: items.map((item: any) => ({
           productId: item.productId,
