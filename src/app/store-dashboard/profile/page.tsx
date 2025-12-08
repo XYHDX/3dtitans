@@ -11,6 +11,7 @@ import { useSessionUser } from '@/hooks/use-session';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase/client';
 
 type FormState = {
@@ -20,6 +21,7 @@ type FormState = {
   avatarUrl: string;
   coverUrl: string;
   websiteUrl: string;
+  isPublished: boolean;
 };
 
 const defaultState: FormState = {
@@ -29,6 +31,7 @@ const defaultState: FormState = {
   avatarUrl: '',
   coverUrl: '',
   websiteUrl: '',
+  isPublished: false,
 };
 
 function initials(name: string) {
@@ -67,6 +70,7 @@ export default function StoreProfilePage() {
         avatarUrl: store.avatarUrl || '',
         coverUrl: store.coverUrl || '',
         websiteUrl: store.websiteUrl || '',
+        isPublished: !!store.isPublished,
       });
     } else {
       setForm((prev) => ({
@@ -95,6 +99,7 @@ export default function StoreProfilePage() {
       avatarUrl: form.avatarUrl.trim(),
       coverUrl: form.coverUrl.trim(),
       websiteUrl: form.websiteUrl.trim(),
+      isPublished: form.isPublished,
     };
 
     try {
@@ -272,6 +277,17 @@ export default function StoreProfilePage() {
                   ? 'Your store is live in the directory.'
                   : 'Publish will be reviewed by the team.'}
               </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="isPublished"
+                checked={form.isPublished}
+                onCheckedChange={(val) => setForm((prev) => ({ ...prev, isPublished: val }))}
+                aria-label="Publish store"
+              />
+              <Label htmlFor="isPublished" className="text-sm">
+                {form.isPublished ? 'Published' : 'Draft'} (toggle to publish/unpublish)
+              </Label>
             </div>
 
             <div className="flex justify-end">

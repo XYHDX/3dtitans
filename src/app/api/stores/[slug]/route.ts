@@ -85,7 +85,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
       }
       data.slug = nextSlug;
     }
-    if (body.isPublished !== undefined && user.role === 'admin') {
+    if (body.isPublished !== undefined && canManage(user, existing)) {
       data.isPublished = !!body.isPublished;
     }
 

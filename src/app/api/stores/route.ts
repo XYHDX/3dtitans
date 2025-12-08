@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       ownerId,
     };
 
-    if (user.role === 'admin' && requestPublish !== undefined) {
+    if (requestPublish !== undefined) {
       data.isPublished = !!requestPublish;
     }
 
