@@ -93,6 +93,7 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
       () => (product.imageGallery && product.imageGallery.length ? product.imageGallery : [product.imageUrl]).filter(Boolean),
       [product.imageGallery, product.imageUrl]
     );
+    const [gallery, setGallery] = useState<string[]>(() => existingGallery.slice(0, 3));
     const { register, handleSubmit, formState: { errors } } = useForm<EditProductFormData>({
       resolver: zodResolver(editProductSchema),
       defaultValues: {
@@ -110,6 +111,11 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
           let uploaded: string[] = [];
           const files: File[] = data.imageFiles ? Array.from(data.imageFiles) : [];
 
+          const availableSlots = Math.max(0, 3 - gallery.length);
+          if (files.length > availableSlots) {
+            throw new Error(`You can only add ${availableSlots} more image${availableSlots === 1 ? '' : 's'} (max 3 total).`);
+          }
+
           if (files.length) {
             if (!supabase) throw new Error('Storage not configured');
             for (const file of files) {
@@ -126,7 +132,7 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
             }
           }
 
-          const nextGallery = [...existingGallery, ...uploaded];
+          const nextGallery = [...gallery, ...uploaded].slice(0, 3);
 
           const updated = await onUpdate(product.id, {
             name: data.name,
@@ -137,7 +143,7 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
               .split(',')
               .map((tag) => tag.trim())
               .filter(Boolean),
-            imageUrl: uploaded[0] || product.imageUrl,
+            imageUrl: nextGallery[0] || product.imageUrl,
             imageGallery: nextGallery,
           });
 
@@ -191,13 +197,46 @@ function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: 
                         {errors.tags && <p className="text-xs text-destructive">{errors.tags.message as string}</p>}
                     </div>
                     <div className="grid gap-2">
-                        <Label>Current Images</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {existingGallery.map((img, idx) => (
-                            <div key={img + idx} className="h-16 w-16 overflow-hidden rounded border bg-muted">
-                              <Image src={img} alt={product.name} width={64} height={64} className="h-full w-full object-cover" />
+                        <Label>Current Images (max 3)</Label>
+                        <div className="flex flex-wrap gap-3">
+                          {gallery.map((img, idx) => (
+                            <div key={img + idx} className="relative h-20 w-20 overflow-hidden rounded border bg-muted">
+                              <Image src={img} alt={product.name} width={80} height={80} className="h-full w-full object-cover" />
+                              <div className="absolute inset-x-0 bottom-0 flex justify-between p-1 bg-black/50">
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                                  e.preventDefault();
+                                  if (idx === 0) return;
+                                  setGallery((prev) => {
+                                    const next = [...prev];
+                                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                    return next;
+                                  });
+                                }} disabled={idx === 0}>
+                                  ↑
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                                  e.preventDefault();
+                                  if (idx === gallery.length - 1) return;
+                                  setGallery((prev) => {
+                                    const next = [...prev];
+                                    [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                                    return next;
+                                  });
+                                }} disabled={idx === gallery.length - 1}>
+                                  ↓
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                                  e.preventDefault();
+                                  setGallery((prev) => prev.filter((_, i) => i !== idx));
+                                }}>
+                                  ✕
+                                </Button>
+                              </div>
                             </div>
                           ))}
+                          {gallery.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No images yet. Add up to 3.</p>
+                          )}
                         </div>
                     </div>
                     <div className="grid gap-2">
