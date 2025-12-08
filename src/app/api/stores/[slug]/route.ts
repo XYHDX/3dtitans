@@ -11,7 +11,7 @@ function slugify(input: string) {
     .replace(/-{2,}/g, '-');
 }
 
-function mapStore(store: any) {
+function mapStore(store: any, extraProductsCount?: number) {
   return {
     id: store.id,
     name: store.name,
@@ -22,7 +22,7 @@ function mapStore(store: any) {
     websiteUrl: store.websiteUrl || null,
     ownerId: store.ownerId,
     isPublished: !!store.isPublished,
-    productsCount: store._count?.products ?? undefined,
+    productsCount: extraProductsCount ?? store._count?.products ?? undefined,
     createdAt: store.createdAt,
     updatedAt: store.updatedAt,
   };
@@ -50,7 +50,11 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ store: mapStore(store) });
+    const extraCount =
+      (await prisma.product.count({ where: { storeId: store.id } })) +
+      (await prisma.product.count({ where: { uploaderId: store.ownerId, storeId: null } }));
+
+    return NextResponse.json({ store: mapStore(store, extraCount) });
   } catch (error) {
     console.error('Store GET failed', error);
     return NextResponse.json({ error: 'Failed to load store' }, { status: 500 });
@@ -95,7 +99,11 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
       include: { _count: { select: { products: true } } },
     });
 
-    return NextResponse.json({ store: mapStore(store) });
+    const extraCount =
+      (await prisma.product.count({ where: { storeId: store.id } })) +
+      (await prisma.product.count({ where: { uploaderId: store.ownerId, storeId: null } }));
+
+    return NextResponse.json({ store: mapStore(store, extraCount) });
   } catch (error) {
     console.error('Store PATCH failed', error);
     return NextResponse.json({ error: 'Failed to update store' }, { status: 500 });

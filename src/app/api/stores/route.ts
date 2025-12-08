@@ -12,7 +12,7 @@ function slugify(input: string) {
     .replace(/-{2,}/g, '-');
 }
 
-function mapStore(store: any) {
+function mapStore(store: any, extraProductsCount?: number) {
   return {
     id: store.id,
     name: store.name,
@@ -23,7 +23,7 @@ function mapStore(store: any) {
     websiteUrl: store.websiteUrl || null,
     ownerId: store.ownerId,
     isPublished: !!store.isPublished,
-    productsCount: store._count?.products ?? undefined,
+    productsCount: extraProductsCount ?? store._count?.products ?? undefined,
     createdAt: store.createdAt,
     updatedAt: store.updatedAt,
   };
@@ -51,7 +51,29 @@ export async function GET(req: Request) {
       include: { _count: { select: { products: true } } },
     });
 
-    return NextResponse.json({ stores: stores.map(mapStore) });
+    const storeIds = stores.map((s) => s.id);
+    const ownerIds = stores.map((s) => s.ownerId);
+
+    const storeCounts = await prisma.product.groupBy({
+      by: ['storeId'],
+      where: { storeId: { in: storeIds } },
+      _count: true,
+    });
+    const ownerCounts = await prisma.product.groupBy({
+      by: ['uploaderId'],
+      where: { uploaderId: { in: ownerIds }, storeId: null },
+      _count: true,
+    });
+
+    const storeCountMap = new Map(storeCounts.map((c: any) => [c.storeId, c._count]));
+    const ownerCountMap = new Map(ownerCounts.map((c: any) => [c.uploaderId, c._count]));
+
+    return NextResponse.json({
+      stores: stores.map((store) => {
+        const combinedCount = (storeCountMap.get(store.id) || 0) + (ownerCountMap.get(store.ownerId) || 0);
+        return mapStore(store, combinedCount);
+      }),
+    });
   } catch (error) {
     console.error('Stores GET failed', error);
     const message = (error as any)?.message || 'Failed to load stores';

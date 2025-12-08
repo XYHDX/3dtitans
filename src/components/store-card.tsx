@@ -27,6 +27,10 @@ function getInitials(name: string) {
 export function StoreCard({ store, className }: StoreCardProps) {
   const { t } = useTranslation();
   const productCount = store.productsCount ?? 0;
+  const websiteHref =
+    store.websiteUrl && !/^https?:\/\//i.test(store.websiteUrl)
+      ? `https://${store.websiteUrl}`
+      : store.websiteUrl;
 
   return (
     <Card className={cn('overflow-hidden h-full flex flex-col border-muted/80', className)}>
@@ -61,9 +65,9 @@ export function StoreCard({ store, className }: StoreCardProps) {
           {store.bio || t('stores.noBio')}
         </p>
         <div className="text-sm font-medium">{t('stores.productsCount', '', { count: productCount })}</div>
-        {store.websiteUrl && (
+        {websiteHref && (
           <Link
-            href={store.websiteUrl}
+            href={websiteHref}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-sm text-primary hover:underline"

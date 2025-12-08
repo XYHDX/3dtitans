@@ -11,6 +11,11 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+function externalUrl(url?: string | null) {
+  if (!url) return null;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
 function getInitials(name: string) {
   return name
     .split(' ')
@@ -77,9 +82,9 @@ export default function StoreDetailPage({ params }: { params: { slug: string } }
           <div className="flex-1">
             <h1 className="text-3xl md:text-4xl font-bold text-foreground drop-shadow-md">{store.name}</h1>
             <p className="text-muted-foreground text-sm mt-1 drop-shadow-sm">/{store.slug}</p>
-            {store.websiteUrl && (
+            {externalUrl(store.websiteUrl) && (
               <Link
-                href={store.websiteUrl}
+                href={externalUrl(store.websiteUrl)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
@@ -127,11 +132,11 @@ export default function StoreDetailPage({ params }: { params: { slug: string } }
               <span className="text-muted-foreground">{t('stores.productsLabel')}</span>
               <span className="font-medium">{productList.length}</span>
             </div>
-            {store.websiteUrl && (
+            {externalUrl(store.websiteUrl) && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">{t('stores.website')}</span>
                 <Link
-                  href={store.websiteUrl}
+                  href={externalUrl(store.websiteUrl)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
