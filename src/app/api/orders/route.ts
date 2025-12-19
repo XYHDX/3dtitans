@@ -96,6 +96,7 @@ export async function GET() {
 
     let orders;
     const fetchOrders = async () => {
+      const userEmail = (user.email || '').toLowerCase();
       if (user.role === 'admin') {
         return prisma.order.findMany({
           orderBy: { createdAt: 'desc' },
@@ -115,8 +116,12 @@ export async function GET() {
           select: baseSelect,
         });
       }
+      const userFilter = [
+        { userId: user.id },
+        userEmail ? { customerEmail: userEmail } : undefined,
+      ].filter(Boolean) as any[];
       return prisma.order.findMany({
-        where: { userId: user.id },
+        where: { OR: userFilter },
         orderBy: { createdAt: 'desc' },
         select: baseSelect,
       });
