@@ -132,41 +132,68 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const user = session?.user;
-  if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
+  try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+    if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
-  const body = await req.json();
-  const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized } = body;
+    const body = await req.json();
+    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized } = body;
 
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return NextResponse.json({ error: 'Items are required' }, { status: 400 });
-  }
-  const total = Number(totalAmount);
-  if (Number.isNaN(total)) {
-    return NextResponse.json({ error: 'Total amount is required' }, { status: 400 });
-  }
-  if (!shippingAddress?.fullName || !shippingAddress?.addressLine1 || !shippingAddress?.city || !shippingAddress?.postalCode || !shippingAddress?.country) {
-    return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
-  }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Items are required' }, { status: 400 });
+    }
+    const total = Number(totalAmount);
+    if (Number.isNaN(total)) {
+      return NextResponse.json({ error: 'Total amount is required' }, { status: 400 });
+    }
+    if (!shippingAddress?.fullName || !shippingAddress?.addressLine1 || !shippingAddress?.city || !shippingAddress?.postalCode || !shippingAddress?.country) {
+      return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+    }
 
-  const productIds = items.map((item: any) => item.productId).filter(Boolean);
-  const productOwners = productIds.length
-    ? await prisma.product.findMany({
-        where: { id: { in: productIds } },
-        select: { id: true, uploaderId: true },
-      })
-    : [];
-  const uploaderIds = Array.from(new Set(productOwners.map((p) => p.uploaderId).filter(Boolean)));
-  const initialAssignees = Array.isArray(assignedAdminIds) && assignedAdminIds.length > 0 ? assignedAdminIds : uploaderIds;
+    const productIds = items.map((item: any) => item.productId).filter(Boolean);
+    let uploaderIds: string[] = [];
+    try {
+      uploaderIds = productIds.length
+        ? Array.from(
+            new Set(
+              (
+                await prisma.product.findMany({
+                  where: { id: { in: productIds } },
+                  select: { id: true, uploaderId: true },
+                })
+              )
+                .map((p) => p.uploaderId)
+                .filter(Boolean)
+            )
+          )
+        : [];
+    } catch (lookupError) {
+      console.error('Order assignee lookup failed', lookupError);
+    }
 
-  if (!initialAssignees.length) {
-    return NextResponse.json({ error: 'Order cannot be created because products are missing uploader assignments.' }, { status: 400 });
-  }
+    const preferredAssignees = Array.isArray(assignedAdminIds) ? assignedAdminIds : [];
+    const initialAssignees = preferredAssignees.length > 0 ? preferredAssignees : uploaderIds;
+    const assignees = Array.from(
+      new Set((initialAssignees || []).filter((id) => typeof id === 'string' && id.trim().length > 0))
+    );
 
-  const order = await prisma.order.create({
-    data: {
-      userId: user?.id,
+    if (!assignees.length) {
+      return NextResponse.json({ error: 'Order cannot be created because products are missing uploader assignments.' }, { status: 400 });
+    }
+
+    let userId: string | undefined;
+    if (user?.id) {
+      try {
+        const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+        userId = dbUser?.id || undefined;
+      } catch (userLookupError) {
+        console.error('Order user lookup failed', userLookupError);
+      }
+    }
+
+    const orderData = {
+      userId,
       status: 'AwaitingAcceptance',
       totalAmount: total,
       shippingName: shippingAddress.fullName,
@@ -176,7 +203,7 @@ export async function POST(req: Request) {
       shippingCountry: shippingAddress.country,
       phoneNumber,
       customerEmail: customerEmail || user?.email,
-    isPrioritized: !!isPrioritized,
+      isPrioritized: !!isPrioritized,
       items: {
         create: items.map((item: any) => ({
           productId: item.productId,
@@ -186,22 +213,38 @@ export async function POST(req: Request) {
           imageUrl: item.imageUrl,
         })),
       },
-      assignments: assignedAdminIds && assignedAdminIds.length > 0
+      assignments: assignees.length
         ? {
-            create: initialAssignees.map((ownerId: string) => ({
-              ownerId,
-            })),
-          }
-        : initialAssignees.length
-        ? {
-            create: initialAssignees.map((ownerId: string) => ({
+            create: assignees.map((ownerId: string) => ({
               ownerId,
             })),
           }
         : undefined,
-    },
-    include: { items: true, assignments: true },
-  });
+    };
 
-  return NextResponse.json({ order: mapOrder(order) });
+    let order;
+    try {
+      order = await prisma.order.create({
+        data: orderData,
+        include: { items: true, assignments: true },
+      });
+    } catch (error: any) {
+      // If the linked user cannot be found (common when using transient users), retry without linking the order.
+      if (error?.code === 'P2003' && orderData.userId) {
+        console.warn('Order create failed with user FK, retrying without userId');
+        order = await prisma.order.create({
+          data: { ...orderData, userId: undefined },
+          include: { items: true, assignments: true },
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    return NextResponse.json({ order: mapOrder(order) });
+  } catch (error: any) {
+    console.error('Orders POST failed', error);
+    const message = error?.message || 'Failed to create order';
+    return NextResponse.json({ error: message, code: error?.code }, { status: 500 });
+  }
 }
