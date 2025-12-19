@@ -35,6 +35,16 @@ function mapOrder(order: any) {
   };
 }
 
+async function ensureOrderNotesColumn() {
+  try {
+    await prisma.$executeRawUnsafe('ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "notes" TEXT;');
+    return true;
+  } catch (error) {
+    console.error('Failed to ensure Order.notes column', error);
+    return false;
+  }
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -138,7 +148,7 @@ export async function POST(req: Request) {
     if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
     const body = await req.json();
-    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized } = body;
+    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Items are required' }, { status: 400 });
@@ -204,6 +214,7 @@ export async function POST(req: Request) {
       phoneNumber,
       customerEmail: customerEmail || user?.email,
       isPrioritized: !!isPrioritized,
+      notes: typeof notes === 'string' ? notes : '',
       items: {
         create: items.map((item: any) => ({
           productId: item.productId,
@@ -229,8 +240,17 @@ export async function POST(req: Request) {
         include: { items: true, assignments: true },
       });
     } catch (error: any) {
-      // If the linked user cannot be found (common when using transient users), retry without linking the order.
-      if (error?.code === 'P2003' && orderData.userId) {
+      if (error?.code === 'P2022') {
+        const ensured = await ensureOrderNotesColumn();
+        if (ensured) {
+          order = await prisma.order.create({
+            data: orderData,
+            include: { items: true, assignments: true },
+          });
+        } else {
+          throw error;
+        }
+      } else if (error?.code === 'P2003' && orderData.userId) {
         console.warn('Order create failed with user FK, retrying without userId');
         order = await prisma.order.create({
           data: { ...orderData, userId: undefined },
