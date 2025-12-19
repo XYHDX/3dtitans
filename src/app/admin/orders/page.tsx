@@ -38,6 +38,22 @@ const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id:
         );
     }
 
+    if (order.status === 'CancellationRequested') {
+        return (
+            <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-destructive bg-destructive/10 px-2 py-1 rounded">
+                    Cancellation requested
+                </span>
+                <Button variant="outline" size="sm" onClick={() => handleStatusChange('Cancelled')}>
+                    Approve
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleStatusChange('Pending')}>
+                    Keep order
+                </Button>
+            </div>
+        );
+    }
+
     return (
         <Select defaultValue={order.status} onValueChange={handleStatusChange as any}>
             <SelectTrigger className="w-[120px]">
@@ -47,6 +63,7 @@ const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id:
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Printing">Printing</SelectItem>
                 <SelectItem value="Finished">Finished</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
             </SelectContent>
         </Select>
     );
@@ -127,8 +144,8 @@ function OrdersList() {
     const { t } = useTranslation();
     const baseFilter =
       user?.role === 'store-owner' && user?.id
-        ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] }
-        : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] };
+        ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] }
+        : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] };
     const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(baseFilter);
 
     if (ordersLoading) {

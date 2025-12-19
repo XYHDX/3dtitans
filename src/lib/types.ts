@@ -85,7 +85,7 @@ export type Order = {
     userId: string;
     orderDate: Timestamp;
     totalAmount: number;
-    status: 'AwaitingAcceptance' | 'Pending' | 'Printing' | 'Finished' | 'Pooled';
+    status: 'AwaitingAcceptance' | 'Pending' | 'Printing' | 'Finished' | 'Pooled' | 'CancellationRequested' | 'Cancelled';
     items: {
         productId: string;
         name: string;

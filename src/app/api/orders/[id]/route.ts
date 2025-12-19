@@ -41,7 +41,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { status, predictedFinishDate, isPrioritized, releaseToPool, claimForOwnerId, totalAmount } = body;
+  const { status, predictedFinishDate, isPrioritized, releaseToPool, claimForOwnerId, totalAmount, requestCancellation } = body;
 
   const existing = await prisma.order.findUnique({
     where: { id: params.id },
@@ -53,15 +53,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const isAdmin = user.role === 'admin';
   const isOwner = user.role === 'store-owner' && (existing.assignments || []).some((a) => a.ownerId === user.id);
   const isPooledClaim = user.role === 'store-owner' && existing.status === 'Pooled';
-  if (!isAdmin && !isOwner && !isPooledClaim) {
+  const isCustomer =
+    (!!existing.userId && existing.userId === user.id) ||
+    (!!existing.customerEmail && !!user.email && existing.customerEmail.toLowerCase() === (user.email || '').toLowerCase());
+  const isCustomerCancellation = !!requestCancellation && isCustomer;
+
+  if (!isAdmin && !isOwner && !isPooledClaim && !isCustomerCancellation) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   const data: any = {};
-  if (status) data.status = status;
-  if (typeof isPrioritized === 'boolean') data.isPrioritized = isPrioritized;
-  if (predictedFinishDate) data.predictedFinishAt = new Date(predictedFinishDate);
-  if (typeof totalAmount === 'number') data.totalAmount = totalAmount;
+  if (isCustomerCancellation) {
+    if (existing.status === 'Finished' || existing.status === 'Cancelled') {
+      return NextResponse.json({ error: 'Order can no longer be cancelled' }, { status: 400 });
+    }
+    data.status = 'CancellationRequested';
+  } else {
+    if (status) data.status = status;
+    if (typeof isPrioritized === 'boolean') data.isPrioritized = isPrioritized;
+    if (predictedFinishDate) data.predictedFinishAt = new Date(predictedFinishDate);
+    if (typeof totalAmount === 'number') data.totalAmount = totalAmount;
+  }
 
   if (releaseToPool) {
     data.status = 'Pooled';

@@ -9,6 +9,8 @@ import { useSessionUser } from '@/hooks/use-session';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: string }> = {
@@ -17,6 +19,8 @@ function StatusBadge({ status }: { status: string }) {
     Printing: { label: 'Printing', variant: 'default' },
     Finished: { label: 'Finished', variant: 'success' },
     Pooled: { label: 'Processing', variant: 'secondary' },
+    CancellationRequested: { label: 'Cancellation Requested', variant: 'destructive' },
+    Cancelled: { label: 'Cancelled', variant: 'outline' },
   };
   const meta = map[status] || { label: status, variant: 'outline' };
   return <Badge variant={meta.variant as any}>{meta.label}</Badge>;
@@ -24,8 +28,10 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function UserOrdersPage() {
   const { user } = useSessionUser();
-  const { data: orders, loading } = useOrders(
-    { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished'] },
+  const { toast } = useToast();
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const { data: orders, loading, requestCancelOrder } = useOrders(
+    { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] },
     { skipFetch: !user }
   );
 
@@ -70,6 +76,7 @@ export default function UserOrdersPage() {
                 <TableHead>Order</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -100,12 +107,44 @@ export default function UserOrdersPage() {
                         : 'N/A'}
                     </TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>
+                      {['Finished', 'Cancelled'].includes(order.status) ? (
+                        <span className="text-muted-foreground text-sm">No actions</span>
+                      ) : order.status === 'CancellationRequested' ? (
+                        <span className="text-muted-foreground text-sm">Awaiting store approval</span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={cancelingId === order.id}
+                          onClick={async () => {
+                            setCancelingId(order.id);
+                            const updated = await requestCancelOrder(order.id);
+                            if (updated) {
+                              toast({
+                                title: 'Cancellation requested',
+                                description: 'The store will confirm your request soon.',
+                              });
+                            } else {
+                              toast({
+                                variant: 'destructive',
+                                title: 'Unable to request cancellation',
+                                description: 'Please try again or contact support.',
+                              });
+                            }
+                            setCancelingId(null);
+                          }}
+                        >
+                          Request cancellation
+                        </Button>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">${order.totalAmount.toFixed(2)}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center">No orders yet.</TableCell>
+                  <TableCell colSpan={5} className="text-center">No orders yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>

@@ -313,6 +313,18 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     return data.order as Order;
   }, []);
 
+  const requestCancelOrder = useCallback(async (id: string) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestCancellation: true }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+    return data.order as Order;
+  }, []);
+
   const releaseOrderToPool = useCallback(async (id: string) => {
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PATCH',
@@ -355,7 +367,7 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     return result;
   }, [orders, filter?.ownerId, filter?.statusIn]);
 
-  return { data, loading, refresh, createOrder, updateOrder, releaseOrderToPool, claimOrder, deleteOrder };
+  return { data, loading, refresh, createOrder, updateOrder, requestCancelOrder, releaseOrderToPool, claimOrder, deleteOrder };
 }
 
 // Settings
