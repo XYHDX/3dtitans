@@ -151,9 +151,8 @@ export default function SignUpPage() {
             </svg>
             Sign up with Google
           </Button>
-        </div>
-      </CardContent>
-    </Card>
-    </div >
+        </CardContent>
+      </Card>
+    </div>
   );
 }
