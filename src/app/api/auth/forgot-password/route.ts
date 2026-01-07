@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export async function POST(req: Request) {
     try {
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
         const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
-        if (process.env.RESEND_API_KEY) {
+        if (resend) {
             await resend.emails.send({
                 from: '3D Titans <noreply@3dtitans.com>',
                 to: email,
