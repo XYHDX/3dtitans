@@ -50,8 +50,8 @@ export async function POST(req: Request) {
         }
 
         return NextResponse.json({ message: 'Email sent' });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Forgot password error:', error);
-        return NextResponse.json({ error: 'Failed to send reset email' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Failed to send reset email' }, { status: 500 });
     }
 }
