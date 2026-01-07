@@ -61,16 +61,25 @@ export async function GET(req: Request) {
     });
     const ownerCounts = await prisma.product.groupBy({
       by: ['uploaderId'],
-      where: { uploaderId: { in: ownerIds }, storeId: null },
+      where: { uploaderId: { in: ownerIds } },
+      _count: true,
+    });
+    const intersectionCounts = await prisma.product.groupBy({
+      by: ['storeId', 'uploaderId'],
+      where: { storeId: { in: storeIds }, uploaderId: { in: ownerIds } },
       _count: true,
     });
 
     const storeCountMap = new Map(storeCounts.map((c: any) => [c.storeId, c._count]));
     const ownerCountMap = new Map(ownerCounts.map((c: any) => [c.uploaderId, c._count]));
+    const intersectionMap = new Map(intersectionCounts.map((c: any) => [`${c.storeId}:${c.uploaderId}`, c._count]));
 
     return NextResponse.json({
       stores: stores.map((store) => {
-        const combinedCount = (storeCountMap.get(store.id) || 0) + (ownerCountMap.get(store.ownerId) || 0);
+        const sCount = storeCountMap.get(store.id) || 0;
+        const oCount = ownerCountMap.get(store.ownerId) || 0;
+        const iCount = intersectionMap.get(`${store.id}:${store.ownerId}`) || 0;
+        const combinedCount = sCount + oCount - iCount;
         return mapStore(store, combinedCount);
       }),
     });
@@ -131,14 +140,14 @@ export async function POST(req: Request) {
 
     const store = targetStore
       ? await prisma.store.update({
-          where: { id: targetStore.id },
-          data,
-          include: { _count: { select: { products: true } } },
-        })
+        where: { id: targetStore.id },
+        data,
+        include: { _count: { select: { products: true } } },
+      })
       : await prisma.store.create({
-          data,
-          include: { _count: { select: { products: true } } },
-        });
+        data,
+        include: { _count: { select: { products: true } } },
+      });
 
     return NextResponse.json({ store: mapStore(store) });
   } catch (error) {

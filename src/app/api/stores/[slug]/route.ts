@@ -51,9 +51,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const extraCount =
-      (await prisma.product.count({ where: { storeId: store.id } })) +
-      (await prisma.product.count({ where: { uploaderId: store.ownerId, storeId: null } }));
+    const extraCount = await prisma.product.count({
+      where: {
+        OR: [{ storeId: store.id }, { uploaderId: store.ownerId }],
+      },
+    });
 
     return NextResponse.json({ store: mapStore(store, extraCount) });
   } catch (error) {
@@ -101,9 +103,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
       include: { _count: { select: { products: true } } },
     });
 
-    const extraCount =
-      (await prisma.product.count({ where: { storeId: store.id } })) +
-      (await prisma.product.count({ where: { uploaderId: store.ownerId, storeId: null } }));
+    const extraCount = await prisma.product.count({
+      where: {
+        OR: [{ storeId: store.id }, { uploaderId: store.ownerId }],
+      },
+    });
 
     return NextResponse.json({ store: mapStore(store, extraCount) });
   } catch (error) {
