@@ -1,5 +1,5 @@
 
-import type {Config} from 'tailwindcss';
+import type { Config } from 'tailwindcss';
 
 const config = {
   darkMode: ['class'],
@@ -8,7 +8,7 @@ const config = {
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
     './src/**/*.{ts,tsx}',
-	],
+  ],
   prefix: "",
   theme: {
     container: {
@@ -74,8 +74,8 @@ const config = {
         "accordion-up": "accordion-up 0.2s ease-out",
       },
       fontFamily: {
-        body: ['Manrope', 'sans-serif'],
-        headline: ['Bebas Neue', 'sans-serif'],
+        body: ['var(--font-manrope)', 'sans-serif'],
+        headline: ['var(--font-bebas)', 'sans-serif'],
       },
     },
   },

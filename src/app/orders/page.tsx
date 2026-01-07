@@ -31,7 +31,7 @@ export default function UserOrdersPage() {
   const { toast } = useToast();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const { data: orders, loading, requestCancelOrder } = useOrders(
-    { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] },
+    { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] as any },
     { skipFetch: !user }
   );
 
@@ -97,13 +97,13 @@ export default function UserOrdersPage() {
                     <TableCell>
                       {order.orderDate
                         ? (() => {
-                            const raw =
-                              typeof order.orderDate === 'object' && 'toDate' in order.orderDate
-                                ? (order.orderDate as any).toDate()
-                                : new Date(order.orderDate as any);
-                            const d = raw instanceof Date ? raw : new Date(raw);
-                            return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
-                          })()
+                          const raw =
+                            typeof order.orderDate === 'object' && 'toDate' in order.orderDate
+                              ? (order.orderDate as any).toDate()
+                              : new Date(order.orderDate as any);
+                          const d = raw instanceof Date ? raw : new Date(raw);
+                          return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
+                        })()
                         : 'N/A'}
                     </TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>

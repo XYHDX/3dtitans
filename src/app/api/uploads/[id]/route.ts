@@ -3,18 +3,20 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user || (user.role !== 'admin' && user.role !== 'store-owner')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await prisma.upload.delete({ where: { id: params.id } });
+  await prisma.upload.delete({ where: { id: id } });
   return NextResponse.json({ ok: true });
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user || user.role !== 'admin') {
@@ -25,7 +27,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { assignedOwnerId, status } = body;
 
   const upload = await prisma.upload.update({
-    where: { id: params.id },
+    where: { id: id },
     data: {
       assignedOwnerId: assignedOwnerId || null,
       assignedOwnerEmail: assignedOwnerId

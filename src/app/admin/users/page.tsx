@@ -44,50 +44,61 @@ import { Switch } from '@/components/ui/switch';
 import { useUsers } from '@/hooks/use-session';
 
 
+
+type PropUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified?: boolean;
+  isPrioritizedStore?: boolean;
+  role?: string;
+  photoURL?: string | null;
+};
+
 function DeleteUserAlert({ userId, userName }: { userId: string, userName: string }) {
-    const { toast } = useToast();
-    const { deleteUser } = useUsers();
-    const [isDeleting, setIsDeleting] = useState(false);
+  const { toast } = useToast();
+  const { deleteUser } = useUsers();
+  const [isDeleting, setIsDeleting] = useState(false);
 
-    const handleDelete = async () => {
-        setIsDeleting(true);
-        try {
-            const result = await deleteUser(userId);
-            if (!result.ok) throw new Error(result.message || 'Delete failed');
-            toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Delete Failed', description: error?.message || 'Unable to delete user.' });
-        } finally {
-            setIsDeleting(false);
-        }
-    };
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const result = await deleteUser(userId);
+      if (!result.ok) throw new Error(result.message || 'Delete failed');
+      toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Delete Failed', description: error?.message || 'Unable to delete user.' });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
-    return (
-        <AlertDialog>
-            <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isDeleting}>
-                    <Trash2 className="h-4 w-4" />
-                </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action is irreversible. This will permanently delete the user account for "{userName}", including their authentication record and all associated data.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90" disabled={isDeleting}>
-                        {isDeleting ? 'Deleting...' : 'Delete User Permanently'}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-    );
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isDeleting}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action is irreversible. This will permanently delete the user account for "{userName}", including their authentication record and all associated data.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90" disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete User Permanently'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
-function VerificationSwitch({ user }: { user: UserProfile & { id: string }}) {
+function VerificationSwitch({ user }: { user: PropUser }) {
   const { toast } = useToast();
   const { updateUserVerification } = useUsers();
   // Optimistic UI state
@@ -112,14 +123,14 @@ function VerificationSwitch({ user }: { user: UserProfile & { id: string }}) {
   };
 
   return (
-      <Switch
-        checked={isVerified}
-        onCheckedChange={handleVerificationChange}
-      />
+    <Switch
+      checked={isVerified}
+      onCheckedChange={handleVerificationChange}
+    />
   );
 }
 
-function PrioritySwitch({ user }: { user: UserProfile & { id: string } }) {
+function PrioritySwitch({ user }: { user: PropUser }) {
   const { toast } = useToast();
   const { updateUserPriority } = useUsers();
   const [isPrioritized, setIsPrioritized] = useState(!!user.isPrioritizedStore);
@@ -152,7 +163,7 @@ function PrioritySwitch({ user }: { user: UserProfile & { id: string } }) {
 }
 
 
-function RoleSelector({ user }: { user: UserProfile & { id: string } }) {
+function RoleSelector({ user }: { user: PropUser }) {
   const { toast } = useToast();
   const { updateUserRole } = useUsers();
 
@@ -196,7 +207,7 @@ export default function UsersAdminPage() {
     if (!email) return 'U';
     return email.substring(0, 2).toUpperCase();
   };
-  
+
   return (
     <Card>
       <CardHeader>
@@ -218,22 +229,22 @@ export default function UsersAdminPage() {
           </TableHeader>
           <TableBody>
             {usersLoading ? (
-               Array.from({ length: 5 }).map((_, i) => (
-                   <TableRow key={i}>
-                       <TableCell><div className="flex items-center gap-3"><Skeleton className="h-10 w-10 rounded-full" /><div className='space-y-1'><Skeleton className="h-4 w-24" /><Skeleton className="h-3 w-32" /></div></div></TableCell>
-                       <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                       <TableCell><Skeleton className="h-6 w-16" /></TableCell>
-                        <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                       <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
-                   </TableRow>
-               ))
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><div className="flex items-center gap-3"><Skeleton className="h-10 w-10 rounded-full" /><div className='space-y-1'><Skeleton className="h-4 w-24" /><Skeleton className="h-3 w-32" /></div></div></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                </TableRow>
+              ))
             ) : users && users.length > 0 ? (
               users.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar>
-                        <AvatarImage src={user.photoURL} />
+                        <AvatarImage src={user.photoURL || undefined} />
                         <AvatarFallback>
                           {getInitials(user.email)}
                         </AvatarFallback>

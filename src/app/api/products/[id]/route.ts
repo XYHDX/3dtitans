@@ -80,12 +80,13 @@ async function canManage(user: any, product: any) {
   return false;
 }
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const prioritizedIds = await getPrioritizedIds();
 
     const product = await prisma.product.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
         store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
@@ -98,7 +99,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   } catch (error) {
     console.error('Product GET failed (priority include)', error);
     const fallback = await prisma.product.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { uploader: { select: { id: true, name: true, email: true } }, store: { select: { id: true, name: true, slug: true, avatarUrl: true } } },
     });
     if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -109,12 +110,13 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const existing = await prisma.product.findUnique({ where: { id: params.id } });
+  const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing || !(await canManage(user, existing))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
@@ -150,7 +152,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   try {
     const product = await prisma.product.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
@@ -161,7 +163,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   } catch (error) {
     console.error('Product PATCH failed (priority include)', error);
     const product = await prisma.product.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         uploader: { select: { id: true, name: true, email: true } },
@@ -175,26 +177,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const existing = await prisma.product.findUnique({ where: { id: params.id } });
+  const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing || !(await canManage(user, existing))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   try {
     const ordersWithProduct = await prisma.order.findMany({
-      where: { items: { some: { productId: params.id } } },
+      where: { items: { some: { productId: id } } },
       include: { items: true, assignments: true },
     });
 
     await prisma.$transaction(async (tx) => {
       for (const order of ordersWithProduct) {
-        const remainingItems = order.items.filter((item: any) => item.productId !== params.id);
-        const removeIds = order.items.filter((item: any) => item.productId === params.id).map((i: any) => i.id);
+        const remainingItems = order.items.filter((item: any) => item.productId !== id);
+        const removeIds = order.items.filter((item: any) => item.productId === id).map((i: any) => i.id);
 
         if (removeIds.length) {
           await tx.orderItem.deleteMany({ where: { id: { in: removeIds } } });
@@ -215,12 +218,12 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
         }
       }
 
-      await tx.product.delete({ where: { id: params.id } });
+      await tx.product.delete({ where: { id } });
     });
   } catch (err) {
     console.error('Product delete transaction failed, attempting direct delete', err);
     try {
-      await prisma.product.delete({ where: { id: params.id } });
+      await prisma.product.delete({ where: { id } });
     } catch (err2) {
       console.error('Product direct delete failed', err2);
       return NextResponse.json({ error: 'Failed to delete product' }, { status: 500 });

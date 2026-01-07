@@ -359,7 +359,7 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
   const data = useMemo(() => {
     let result = orders;
     if (filter?.ownerId) {
-      result = result.filter((o) => o.assignedAdminIds?.includes(filter.ownerId));
+      result = result.filter((o) => o.assignedAdminIds?.includes(filter.ownerId!));
     }
     if (filter?.statusIn) {
       result = result.filter((o) => filter.statusIn?.includes(o.status));

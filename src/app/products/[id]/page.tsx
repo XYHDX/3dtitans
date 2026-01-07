@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Star, Box, ShoppingCart, Plus, Minus, ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, use } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { Badge } from '@/components/ui/badge';
 import { useProducts } from '@/hooks/use-data';
@@ -17,8 +17,8 @@ import Link from 'next/link';
 import { useTranslation } from '@/components/language-provider';
 import { useSessionUser } from '@/hooks/use-session';
 
-export default function ProductDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const { data: products, loading } = useProducts();
   const { toast } = useToast();
   const { addToCart, getItemQuantity } = useCart();
@@ -29,7 +29,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     if (words.length <= limit) return value;
     return `${words.slice(0, limit).join(' ')}...`;
   };
-  
+
   const [quantity, setQuantity] = useState(1);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
@@ -69,14 +69,14 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     }
 
     addToCart(product, quantity);
-    
+
     toast({
       title: t('productCard.addedTitle'),
       description: t('productCard.addedDescription', '', { name: `${quantity} x ${product.name}` }),
     });
     setQuantity(1); // Reset quantity after adding
   };
-  
+
   if (loading) {
     return <ProductDetailSkeleton />;
   }
@@ -176,12 +176,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               )}
             </div>
             {gallery.length > 1 && (
-            <div className="grid grid-cols-4 gap-2">
-              {gallery.map((img) => (
-                <button
-                  key={img}
-                  onClick={() => setActiveImage(img)}
-                  className={cn(
+              <div className="grid grid-cols-4 gap-2">
+                {gallery.map((img) => (
+                  <button
+                    key={img}
+                    onClick={() => setActiveImage(img)}
+                    className={cn(
                       'relative aspect-square rounded-md overflow-hidden border',
                       activeImage === img ? 'border-primary ring-2 ring-primary/50' : 'border-muted'
                     )}
@@ -232,12 +232,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             <p className="mt-3 text-sm font-semibold text-destructive">
               If you want to buy the STL file contact the store owner at {product.uploaderEmail || 'their email is not available'}.
             </p>
-            
+
             {product.tags && product.tags.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="font-semibold text-foreground text-sm">{t('productDetail.tags')}</span> 
+                <span className="font-semibold text-foreground text-sm">{t('productDetail.tags')}</span>
                 {product.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary">{tag}</Badge>
+                  <Badge key={tag} variant="secondary">{tag}</Badge>
                 ))}
               </div>
             )}
@@ -245,16 +245,16 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             <div className="flex-grow" />
 
             <Separator className="my-6" />
-            
+
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
               <p className="text-4xl font-bold">${product.price.toFixed(2)}</p>
-              
+
               <div className="flex flex-wrap items-center gap-4 justify-start sm:justify-end">
-                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={() => setQuantity(q => Math.max(1, q - 1))}>
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="text-xl font-bold w-10 text-center">{quantity}</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => Math.max(1, q - 1))}>
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xl font-bold w-10 text-center">{quantity}</span>
                   <Button variant="outline" size="icon" onClick={() => setQuantity(q => q + 1)}>
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -266,11 +266,11 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               </div>
 
             </div>
-             {quantityInCart > 0 && (
-                <p className="text-sm text-center mt-4 text-muted-foreground">
-                  {t('productDetail.inCart', '', { count: quantityInCart })}
-                </p>
-              )}
+            {quantityInCart > 0 && (
+              <p className="text-sm text-center mt-4 text-muted-foreground">
+                {t('productDetail.inCart', '', { count: quantityInCart })}
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -290,7 +290,7 @@ function ProductDetailSkeleton() {
             <Skeleton className="h-5 w-1/2" />
             <Separator className="my-2" />
             <Skeleton className="h-24 w-full" />
-             <div className="flex-grow" />
+            <div className="flex-grow" />
             <Separator className="my-2" />
             <div className="flex items-center justify-between">
               <Skeleton className="h-10 w-1/3" />

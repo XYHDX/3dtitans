@@ -116,7 +116,7 @@ const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: st
 
     const handlePrioritizeChange = async (isPrioritized: boolean) => {
         const newTotalAmount = isPrioritized ? order.totalAmount * 1.2 : order.totalAmount / 1.2;
-        await onUpdate(order.id, { 
+        await onUpdate(order.id, {
             isPrioritized,
             totalAmount: newTotalAmount
         });
@@ -129,8 +129,8 @@ const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: st
 
     return (
         <div className="flex items-center space-x-2">
-            <Switch 
-                id={`prioritize-${order.id}`} 
+            <Switch
+                id={`prioritize-${order.id}`}
                 checked={order.isPrioritized || false}
                 onCheckedChange={handlePrioritizeChange}
             />
@@ -143,9 +143,9 @@ function OrdersList() {
     const { user } = useSessionUser();
     const { t } = useTranslation();
     const baseFilter =
-      user?.role === 'store-owner' && user?.id
-        ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] }
-        : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] };
+        user?.role === 'store-owner' && user?.id
+            ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] as any }
+            : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] as any };
     const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(baseFilter);
 
     if (ordersLoading) {
@@ -162,8 +162,8 @@ function OrdersList() {
         <Accordion type="single" collapsible className="w-full space-y-4">
             {orders.map((order) => (
                 <AccordionItem value={order.id} key={order.id} className="bg-muted/50 rounded-lg">
-                     <div className="flex items-center w-full flex-wrap gap-4 px-4 py-2">
-                         <AccordionTrigger className="flex-1 hover:no-underline py-2">
+                    <div className="flex items-center w-full flex-wrap gap-4 px-4 py-2">
+                        <AccordionTrigger className="flex-1 hover:no-underline py-2">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4 text-left">
                                 <div>
                                     <span className="font-bold block sm:inline">Order: </span>
@@ -206,7 +206,7 @@ function OrdersList() {
                                     </TableBody>
                                 </Table>
                             </div>
-                             <div className="space-y-4">
+                            <div className="space-y-4">
                                 <div>
                                     <h4 className="font-semibold mb-2">Shipping Details:</h4>
                                     <div className="text-sm bg-background p-4 rounded-md">
@@ -228,25 +228,25 @@ function OrdersList() {
                                 <div>
                                     <h4 className="font-semibold mb-2">Order Management:</h4>
                                     <div className="text-sm bg-background p-4 rounded-md space-y-4">
-                                      {order.status === 'AwaitingAcceptance' ? (
-                                        <div className="flex flex-wrap gap-2">
-                                          <Button size="sm" onClick={() => updateOrder(order.id, { status: 'Pending' })}>
-                                            Accept
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="destructive"
-                                            onClick={() => releaseOrderToPool(order.id)}
-                                          >
-                                            Reject
-                                          </Button>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <PredictedDateSelector order={order} onUpdate={updateOrder} />
-                                          <PrioritizeSwitch order={order} onUpdate={updateOrder} />
-                                        </>
-                                      )}
+                                        {order.status === 'AwaitingAcceptance' ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button size="sm" onClick={() => updateOrder(order.id, { status: 'Pending' })}>
+                                                    Accept
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    onClick={() => releaseOrderToPool(order.id)}
+                                                >
+                                                    Reject
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <PredictedDateSelector order={order} onUpdate={updateOrder} />
+                                                <PrioritizeSwitch order={order} onUpdate={updateOrder} />
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -276,7 +276,7 @@ export default function OrdersAdminPage() {
     if (user.role !== 'admin' && user.role !== 'store-owner') {
         return (
             <div className="text-center py-16">
-                 <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
                 <p className="text-muted-foreground mt-4">You do not have permission to view this page.</p>
             </div>
         )

@@ -54,6 +54,8 @@ export type Upload = {
   userEmail: string | null;
   userDisplayName: string | null;
   phoneNumber: string;
+  status?: string;
+  assignedOwnerId?: string | null;
   createdAt: Timestamp;
   updatedAt?: Timestamp | Date | string;
 }
@@ -81,36 +83,37 @@ export type ContactSubmission = {
 };
 
 export type Order = {
-    id: string;
-    userId: string;
-    orderDate: Timestamp;
-    totalAmount: number;
-    status: 'AwaitingAcceptance' | 'Pending' | 'Printing' | 'Finished' | 'Pooled' | 'CancellationRequested' | 'Cancelled';
-    items: {
-        productId: string;
-        name: string;
-        quantity: number;
-        price: number;
-        imageUrl?: string;
-    }[];
-    productIds: string[];
-    shippingAddress: {
-        fullName: string;
-        addressLine1: string;
-        city: string;
-        postalCode: string;
-        country: string;
-    },
-    phoneNumber: string;
-    notes?: string;
-    customerEmail?: string;
-    predictedFinishDate?: Timestamp | Date | string;
-    isPrioritized?: boolean;
-    assignedAdminIds: string[];
-    updatedAt?: Timestamp | Date | string;
+  id: string;
+  userId: string;
+  orderDate: Timestamp;
+  totalAmount: number;
+  status: 'AwaitingAcceptance' | 'Pending' | 'Printing' | 'Finished' | 'Pooled' | 'CancellationRequested' | 'Cancelled';
+  items: {
+    productId: string;
+    name: string;
+    quantity: number;
+    price: number;
+    imageUrl?: string;
+  }[];
+  productIds: string[];
+  shippingAddress: {
+    fullName: string;
+    addressLine1: string;
+    city: string;
+    postalCode: string;
+    country: string;
+  },
+  phoneNumber: string;
+  notes?: string;
+  customerEmail?: string;
+  predictedFinishDate?: Timestamp | Date | string;
+  isPrioritized?: boolean;
+  assignedAdminIds: string[];
+  updatedAt?: Timestamp | Date | string;
 }
 
 export type UserProfile = {
+  id: string;
   uid: string;
   displayName: string;
   email: string;
@@ -119,4 +122,10 @@ export type UserProfile = {
   registrationDate: Timestamp;
   emailVerified?: boolean;
   isPrioritizedStore?: boolean;
+};
+
+export type NewsletterSubscription = {
+  id: string;
+  email: string;
+  subscribedAt: Timestamp | Date | string;
 };

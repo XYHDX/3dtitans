@@ -268,11 +268,11 @@ export const authOptions: NextAuthOptions = {
     }),
     ...(googleEnabled
       ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID as string,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-          }),
-        ]
+        GoogleProvider({
+          clientId: process.env.GOOGLE_CLIENT_ID as string,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+        }),
+      ]
       : []),
   ],
   callbacks: {
@@ -287,7 +287,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = (token.role as string) || 'user';
+        session.user.role = (token.role as any) || 'user';
         (session.user as any).isPrioritizedStore = token.isPrioritizedStore || false;
       }
       return session;

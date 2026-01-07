@@ -22,6 +22,8 @@ export const featuredProducts: Product[] = [
     reviewCount: 125,
     has3dPreview: true,
     ...getImage('product-1'),
+    uploaderId: 'admin-ya',
+    uploaderName: '3D Titans Team',
   },
   {
     id: '2',
@@ -32,6 +34,8 @@ export const featuredProducts: Product[] = [
     reviewCount: 89,
     has3dPreview: true,
     ...getImage('product-2'),
+    uploaderId: 'admin-ya',
+    uploaderName: '3D Titans Team',
   },
   {
     id: '3',
@@ -42,6 +46,8 @@ export const featuredProducts: Product[] = [
     reviewCount: 210,
     has3dPreview: false,
     ...getImage('product-3'),
+    uploaderId: 'admin-ya',
+    uploaderName: '3D Titans Team',
   },
   {
     id: '4',
@@ -52,5 +58,7 @@ export const featuredProducts: Product[] = [
     reviewCount: 154,
     has3dPreview: true,
     ...getImage('product-4'),
+    uploaderId: 'admin-ya',
+    uploaderName: '3D Titans Team',
   },
 ];

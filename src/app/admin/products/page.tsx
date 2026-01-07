@@ -57,7 +57,7 @@ const productSchema = z.object({
       (files) =>
         !files ||
         Array.from(files).every(
-          (f: File) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
+          (f: any) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
         ),
       'Images must be JPG/PNG/WEBP and under 5MB each'
     ),
@@ -66,229 +66,229 @@ const productSchema = z.object({
 type ProductFormData = z.infer<typeof productSchema>;
 
 const editProductSchema = z.object({
-    name: z.string().min(3, 'Name must be at least 3 characters'),
-    price: z.coerce.number().min(0, 'Price must be a positive number'),
-    category: z.string().min(2, 'Category is required'),
-    description: z.string().optional(),
-    tags: z.string().optional(),
-    imageFiles: z
-      .any()
-      .refine((files) => !files || files.length <= 3, 'You can upload up to 3 images')
-      .refine(
-        (files) =>
-          !files ||
-          Array.from(files).every(
-            (f: File) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
-          ),
-        'Images must be JPG/PNG/WEBP and under 5MB each'
-      ),
+  name: z.string().min(3, 'Name must be at least 3 characters'),
+  price: z.coerce.number().min(0, 'Price must be a positive number'),
+  category: z.string().min(2, 'Category is required'),
+  description: z.string().optional(),
+  tags: z.string().optional(),
+  imageFiles: z
+    .any()
+    .refine((files) => !files || files.length <= 3, 'You can upload up to 3 images')
+    .refine(
+      (files) =>
+        !files ||
+        Array.from(files).every(
+          (f: any) => f.size <= 5 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(f.type)
+        ),
+      'Images must be JPG/PNG/WEBP and under 5MB each'
+    ),
 });
 type EditProductFormData = z.infer<typeof editProductSchema>;
 
 function EditProductDialog({ product, onUpdate }: { product: Product; onUpdate: (id: string, patch: Partial<Product>) => Promise<Product | null> }) {
-    const [open, setOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const { toast } = useToast();
-    const existingGallery = useMemo(
-      () => (product.imageGallery && product.imageGallery.length ? product.imageGallery : [product.imageUrl]).filter(Boolean),
-      [product.imageGallery, product.imageUrl]
-    );
-    const [gallery, setGallery] = useState<string[]>(() => existingGallery.slice(0, 3));
-    const { register, handleSubmit, formState: { errors } } = useForm<EditProductFormData>({
-      resolver: zodResolver(editProductSchema),
-      defaultValues: {
-        name: product.name,
-        price: product.price,
-        category: product.category,
-        description: product.description || '',
-        tags: product.tags?.join(', ') || '',
-      },
-    });
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  const existingGallery = useMemo(
+    () => (product.imageGallery && product.imageGallery.length ? product.imageGallery : [product.imageUrl]).filter(Boolean),
+    [product.imageGallery, product.imageUrl]
+  );
+  const [gallery, setGallery] = useState<string[]>(() => existingGallery.slice(0, 3));
+  const { register, handleSubmit, formState: { errors } } = useForm<EditProductFormData>({
+    resolver: zodResolver(editProductSchema),
+    defaultValues: {
+      name: product.name,
+      price: product.price,
+      category: product.category,
+      description: product.description || '',
+      tags: product.tags?.join(', ') || '',
+    },
+  });
 
-    const onSubmit = async (data: EditProductFormData) => {
-        setLoading(true);
-        try {
-          let uploaded: string[] = [];
-          const files: File[] = data.imageFiles ? Array.from(data.imageFiles) : [];
+  const onSubmit = async (data: EditProductFormData) => {
+    setLoading(true);
+    try {
+      let uploaded: string[] = [];
+      const files: File[] = data.imageFiles ? Array.from(data.imageFiles) : [];
 
-          const availableSlots = Math.max(0, 3 - gallery.length);
-          if (files.length > availableSlots) {
-            throw new Error(`You can only add ${availableSlots} more image${availableSlots === 1 ? '' : 's'} (max 3 total).`);
-          }
+      const availableSlots = Math.max(0, 3 - gallery.length);
+      if (files.length > availableSlots) {
+        throw new Error(`You can only add ${availableSlots} more image${availableSlots === 1 ? '' : 's'} (max 3 total).`);
+      }
 
-          if (files.length) {
-            if (!supabase) throw new Error('Storage not configured');
-            for (const file of files) {
-              const fileExt = file.name.split('.').pop();
-              const filePath = `products/${product.uploaderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-              const { error: uploadError } = await supabase.storage
-                .from('product-images')
-                .upload(filePath, file, { cacheControl: '3600', upsert: false });
-              if (uploadError) throw uploadError;
-              const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
-              const imageUrl = publicUrlData?.publicUrl;
-              if (!imageUrl) throw new Error('Could not get public URL for image');
-              uploaded.push(imageUrl);
-            }
-          }
-
-          const nextGallery = [...gallery, ...uploaded].slice(0, 3);
-
-          const updated = await onUpdate(product.id, {
-            name: data.name,
-            price: data.price,
-            category: data.category,
-            description: data.description || '',
-            tags: (data.tags || '')
-              .split(',')
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-            imageUrl: nextGallery[0] || product.imageUrl,
-            imageGallery: nextGallery,
-          });
-
-          if (updated) {
-              toast({ title: 'Success', description: 'Product updated.' });
-              setOpen(false);
-          } else {
-              toast({ variant: 'destructive', title: 'Update failed', description: 'Could not update product.' });
-          }
-        } catch (err: any) {
-          console.error('Update failed', err);
-          toast({ variant: 'destructive', title: 'Update failed', description: err?.message || 'Something went wrong.' });
-        } finally {
-          setLoading(false);
+      if (files.length) {
+        if (!supabase) throw new Error('Storage not configured');
+        for (const file of files) {
+          const fileExt = file.name.split('.').pop();
+          const filePath = `products/${product.uploaderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('product-images')
+            .upload(filePath, file, { cacheControl: '3600', upsert: false });
+          if (uploadError) throw uploadError;
+          const { data: publicUrlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+          const imageUrl = publicUrlData?.publicUrl;
+          if (!imageUrl) throw new Error('Could not get public URL for image');
+          uploaded.push(imageUrl);
         }
-    };
+      }
 
-    return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Edit {product.name}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-name-${product.id}`}>Name</Label>
-                        <Input id={`edit-name-${product.id}`} {...register('name')} />
-                        {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-category-${product.id}`}>Category</Label>
-                        <Input id={`edit-category-${product.id}`} {...register('category')} />
-                        {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-price-${product.id}`}>Price ($)</Label>
-                        <Input id={`edit-price-${product.id}`} type="number" step="0.01" {...register('price')} />
-                        {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-description-${product.id}`}>Description</Label>
-                        <Textarea id={`edit-description-${product.id}`} rows={4} {...register('description')} />
-                        {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-tags-${product.id}`}>Tags (comma-separated)</Label>
-                        <Input id={`edit-tags-${product.id}`} {...register('tags')} />
-                        {errors.tags && <p className="text-xs text-destructive">{errors.tags.message as string}</p>}
-                    </div>
-                    <div className="grid gap-2">
-                        <Label>Current Images (max 3)</Label>
-                        <div className="flex flex-wrap gap-3">
-                          {gallery.map((img, idx) => (
-                            <div key={img + idx} className="relative h-20 w-20 overflow-hidden rounded border bg-muted">
-                              <Image src={img} alt={product.name} width={80} height={80} className="h-full w-full object-cover" />
-                              <div className="absolute inset-x-0 bottom-0 flex justify-between p-1 bg-black/50">
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
-                                  e.preventDefault();
-                                  if (idx === 0) return;
-                                  setGallery((prev) => {
-                                    const next = [...prev];
-                                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                    return next;
-                                  });
-                                }} disabled={idx === 0}>
-                                  ↑
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
-                                  e.preventDefault();
-                                  if (idx === gallery.length - 1) return;
-                                  setGallery((prev) => {
-                                    const next = [...prev];
-                                    [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
-                                    return next;
-                                  });
-                                }} disabled={idx === gallery.length - 1}>
-                                  ↓
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
-                                  e.preventDefault();
-                                  setGallery((prev) => prev.filter((_, i) => i !== idx));
-                                }}>
-                                  ✕
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                          {gallery.length === 0 && (
-                            <p className="text-sm text-muted-foreground">No images yet. Add up to 3.</p>
-                          )}
-                        </div>
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor={`edit-images-${product.id}`}>Add Images (up to 3, 5MB each)</Label>
-                        <Input id={`edit-images-${product.id}`} type="file" multiple accept="image/jpeg,image/png,image/webp" {...register('imageFiles')} />
-                        {errors.imageFiles && <p className="text-xs text-destructive">{errors.imageFiles.message as string}</p>}
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button type="button" variant="secondary">Cancel</Button>
-                        </DialogClose>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-    )
+      const nextGallery = [...gallery, ...uploaded].slice(0, 3);
+
+      const updated = await onUpdate(product.id, {
+        name: data.name,
+        price: data.price,
+        category: data.category,
+        description: data.description || '',
+        tags: (data.tags || '')
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        imageUrl: nextGallery[0] || product.imageUrl,
+        imageGallery: nextGallery,
+      });
+
+      if (updated) {
+        toast({ title: 'Success', description: 'Product updated.' });
+        setOpen(false);
+      } else {
+        toast({ variant: 'destructive', title: 'Update failed', description: 'Could not update product.' });
+      }
+    } catch (err: any) {
+      console.error('Update failed', err);
+      toast({ variant: 'destructive', title: 'Update failed', description: err?.message || 'Something went wrong.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit {product.name}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-name-${product.id}`}>Name</Label>
+            <Input id={`edit-name-${product.id}`} {...register('name')} />
+            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-category-${product.id}`}>Category</Label>
+            <Input id={`edit-category-${product.id}`} {...register('category')} />
+            {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-price-${product.id}`}>Price ($)</Label>
+            <Input id={`edit-price-${product.id}`} type="number" step="0.01" {...register('price')} />
+            {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-description-${product.id}`}>Description</Label>
+            <Textarea id={`edit-description-${product.id}`} rows={4} {...register('description')} />
+            {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-tags-${product.id}`}>Tags (comma-separated)</Label>
+            <Input id={`edit-tags-${product.id}`} {...register('tags')} />
+            {errors.tags && <p className="text-xs text-destructive">{errors.tags.message as string}</p>}
+          </div>
+          <div className="grid gap-2">
+            <Label>Current Images (max 3)</Label>
+            <div className="flex flex-wrap gap-3">
+              {gallery.map((img, idx) => (
+                <div key={img + idx} className="relative h-20 w-20 overflow-hidden rounded border bg-muted">
+                  <Image src={img} alt={product.name} width={80} height={80} className="h-full w-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 flex justify-between p-1 bg-black/50">
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                      e.preventDefault();
+                      if (idx === 0) return;
+                      setGallery((prev) => {
+                        const next = [...prev];
+                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                        return next;
+                      });
+                    }} disabled={idx === 0}>
+                      ↑
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                      e.preventDefault();
+                      if (idx === gallery.length - 1) return;
+                      setGallery((prev) => {
+                        const next = [...prev];
+                        [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                        return next;
+                      });
+                    }} disabled={idx === gallery.length - 1}>
+                      ↓
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                      e.preventDefault();
+                      setGallery((prev) => prev.filter((_, i) => i !== idx));
+                    }}>
+                      ✕
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {gallery.length === 0 && (
+                <p className="text-sm text-muted-foreground">No images yet. Add up to 3.</p>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-images-${product.id}`}>Add Images (up to 3, 5MB each)</Label>
+            <Input id={`edit-images-${product.id}`} type="file" multiple accept="image/jpeg,image/png,image/webp" {...register('imageFiles')} />
+            {errors.imageFiles && <p className="text-xs text-destructive">{errors.imageFiles.message as string}</p>}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">Cancel</Button>
+            </DialogClose>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function DeleteProductAlert({ productId, productName, onDelete }: { productId: string, productName: string, onDelete: (id: string) => Promise<boolean> }) {
-    const { toast } = useToast();
+  const { toast } = useToast();
 
-    const handleDelete = async () => {
-        const ok = await onDelete(productId);
-        if (ok) {
-            toast({ title: 'Product Deleted', description: `${productName} has been removed.` });
-        } else {
-            toast({ variant: 'destructive', title: 'Delete failed', description: 'Could not delete product.' });
-        }
-    };
+  const handleDelete = async () => {
+    const ok = await onDelete(productId);
+    if (ok) {
+      toast({ title: 'Product Deleted', description: `${productName} has been removed.` });
+    } else {
+      toast({ variant: 'destructive', title: 'Delete failed', description: 'Could not delete product.' });
+    }
+  };
 
-    return (
-        <AlertDialog>
-            <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the product "{productName}".
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-    );
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. This will permanently delete the product "{productName}".
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 function ProductsManager() {
@@ -311,15 +311,15 @@ function ProductsManager() {
 
   const onSubmit = async (data: ProductFormData) => {
     if (!user) {
-        toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to add a product.' });
-        return;
+      toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to add a product.' });
+      return;
     }
     if (!supabase) {
       toast({ variant: 'destructive', title: 'Storage not configured', description: 'Supabase client is missing.' });
       return;
     }
     setLoading(true);
-    
+
     try {
       setUploadingImage(true);
       const files: File[] = Array.from(data.imageFiles);
@@ -361,12 +361,12 @@ function ProductsManager() {
         reviewCount: 0,
         has3dPreview: false,
       };
-      
+
       const created = await addProduct(productData as any);
       if (!created) {
         throw new Error('Failed to add product');
       }
-      
+
       toast({
         title: 'Product Added',
         description: `${data.name} has been successfully added.`,
@@ -377,9 +377,9 @@ function ProductsManager() {
       const error = err as any;
       console.error("Debug: Failed to add product:", error);
       toast({
-          variant: 'destructive',
-          title: 'Operation Failed',
-          description: `An error occurred: ${error.message}`,
+        variant: 'destructive',
+        title: 'Operation Failed',
+        description: `An error occurred: ${error.message}`,
       });
     } finally {
       setUploadingImage(false);
@@ -388,10 +388,10 @@ function ProductsManager() {
   };
 
   const isAllowedToManage = (product: Product) => {
-      if (!user) return false;
-      if (user.role === 'admin') return true;
-      if (user.role === 'store-owner' && product.uploaderId === (user.id || user.uid)) return true;
-      return false;
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'store-owner' && product.uploaderId === (user.id || user.uid)) return true;
+    return false;
   }
 
   return (
@@ -409,7 +409,7 @@ function ProductsManager() {
                 <Input id="add-product-name" {...register('name')} />
                 {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
               </div>
-               <div className="grid gap-2">
+              <div className="grid gap-2">
                 <Label htmlFor="add-product-description">Description</Label>
                 <Textarea id="add-product-description" {...register('description')} rows={5} />
               </div>
@@ -439,9 +439,9 @@ function ProductsManager() {
           </CardContent>
         </Card>
         <Card className="w-full md:col-span-2 min-w-0">
-            <CardHeader>
-              <CardTitle>My Products</CardTitle>
-              <CardDescription>
+          <CardHeader>
+            <CardTitle>My Products</CardTitle>
+            <CardDescription>
               {user?.role === 'admin' ? 'A list of all products on the platform.' : 'A list of products you have uploaded.'}
             </CardDescription>
           </CardHeader>
@@ -472,7 +472,7 @@ function ProductsManager() {
                 ) : products && products.length > 0 ? (
                   products.map((product) => (
                     <TableRow key={product.id} className={!isAllowedToManage(product) ? "bg-muted/30" : ""}>
-                       <TableCell>
+                      <TableCell>
                         <Image
                           src={product.imageUrl || "https://placehold.co/40x40"}
                           alt={product.name}
@@ -497,11 +497,11 @@ function ProductsManager() {
                       </TableCell>
                       <TableCell className="text-right">
                         {isAllowedToManage(product) ? (
-                            <div className="flex justify-end items-center">
-                                <EditProductDialog product={product} onUpdate={updateProduct} />
-                                <DeleteProductAlert productId={product.id} productName={product.name} onDelete={deleteProduct} />
-                            </div>
-                        ) : null }
+                          <div className="flex justify-end items-center">
+                            <EditProductDialog product={product} onUpdate={updateProduct} />
+                            <DeleteProductAlert productId={product.id} productName={product.name} onDelete={deleteProduct} />
+                          </div>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -523,25 +523,25 @@ function ProductsManager() {
 
 export default function ProductsAdminPage() {
   const { user } = useSessionUser();
-  
+
   if (!user) {
-      return (
-          <div className="text-center py-16">
-              <p className="text-muted-foreground">Please <Link href="/login" className="underline text-primary">log in</Link> to manage products.</p>
-          </div>
-      )
+    return (
+      <div className="text-center py-16">
+        <p className="text-muted-foreground">Please <Link href="/login" className="underline text-primary">log in</Link> to manage products.</p>
+      </div>
+    )
   }
 
   if (user.role !== 'admin' && user.role !== 'store-owner') {
     return (
-        <div className="text-center py-16">
-            <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
-            <p className="text-muted-foreground mt-4">You do not have permission to view this page.</p>
-        </div>
+      <div className="text-center py-16">
+        <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
+        <p className="text-muted-foreground mt-4">You do not have permission to view this page.</p>
+      </div>
     )
   }
 
   return <ProductsManager />;
 }
 
-    
+

@@ -105,14 +105,14 @@ export default function UploadsAdminPage() {
         <Table>
           <TableHeader>
             <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>File Name</TableHead>
-                  <TableHead>Date Uploaded</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+              <TableHead>User</TableHead>
+              <TableHead>File Name</TableHead>
+              <TableHead>Date Uploaded</TableHead>
+              <TableHead>Assigned To</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {uploadsLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
@@ -134,12 +134,12 @@ export default function UploadsAdminPage() {
                   <TableCell>
                     {upload.createdAt
                       ? (() => {
-                          const raw = typeof upload.createdAt === 'object' && 'toDate' in upload.createdAt
-                            ? (upload.createdAt as any).toDate()
-                            : new Date(upload.createdAt as any);
-                          const d = raw instanceof Date ? raw : new Date(raw);
-                          return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
-                        })()
+                        const raw = typeof upload.createdAt === 'object' && 'toDate' in upload.createdAt
+                          ? (upload.createdAt as any).toDate()
+                          : new Date(upload.createdAt as any);
+                        const d = raw instanceof Date ? raw : new Date(raw);
+                        return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
+                      })()
                       : 'N/A'}
                   </TableCell>
                   <TableCell>
@@ -157,7 +157,7 @@ export default function UploadsAdminPage() {
                           <SelectItem value="unassigned">Unassigned</SelectItem>
                           {storeOwners.map((owner) => (
                             <SelectItem key={owner.id} value={owner.id}>
-                              {owner.name || owner.email}
+                              {owner.displayName || owner.email}
                             </SelectItem>
                           ))}
                         </SelectContent>

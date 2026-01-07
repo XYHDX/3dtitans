@@ -73,7 +73,7 @@ export function StoreCard({ store, className }: StoreCardProps) {
             className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
           >
             <ExternalLink className="h-4 w-4" />
-            {store.websiteUrl.replace(/^https?:\/\//, '')}
+            {store.websiteUrl?.replace(/^https?:\/\//, '')}
           </Link>
         )}
       </CardContent>

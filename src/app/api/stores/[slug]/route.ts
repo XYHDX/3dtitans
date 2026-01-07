@@ -35,13 +35,14 @@ function canManage(user: any, store: any) {
   return false;
 }
 
-export async function GET(req: Request, { params }: { params: { slug: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user;
 
     const store = await prisma.store.findUnique({
-      where: { slug: params.slug },
+      where: { slug: slug },
       include: { _count: { select: { products: true } } },
     });
     if (!store) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -61,12 +62,13 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { slug: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const existing = await prisma.store.findUnique({ where: { slug: params.slug } });
+  const existing = await prisma.store.findUnique({ where: { slug: slug } });
   if (!existing || !canManage(user, existing)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }

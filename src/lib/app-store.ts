@@ -55,6 +55,7 @@ const timestamp = () => ({
 
 const seedUsers: UserRecord[] = [
   {
+
     id: 'admin-1',
     uid: 'admin-1',
     displayName: 'Admin Titan',
@@ -66,6 +67,7 @@ const seedUsers: UserRecord[] = [
     password: 'admin123',
   },
   {
+
     id: 'admin-ya',
     uid: 'admin-ya',
     displayName: 'Yahya Demeriah',
@@ -77,6 +79,7 @@ const seedUsers: UserRecord[] = [
     password: 'admin123',
   },
   {
+
     id: 'owner-2',
     uid: 'owner-2',
     displayName: 'Aboude Murad',
@@ -88,6 +91,7 @@ const seedUsers: UserRecord[] = [
     password: 'owner123',
   },
   {
+
     id: 'owner-1',
     uid: 'owner-1',
     displayName: 'Store Owner',
@@ -99,6 +103,7 @@ const seedUsers: UserRecord[] = [
     password: 'owner123',
   },
   {
+
     id: 'user-1',
     uid: 'user-1',
     displayName: 'Regular User',
@@ -313,10 +318,10 @@ export const useAppStore = create<AppState>()(
           orders: state.orders.map((o) =>
             o.id === id
               ? {
-                  ...o,
-                  status: 'Pending',
-                  assignedAdminIds: Array.from(new Set([...(o.assignedAdminIds || []), ownerId])),
-                }
+                ...o,
+                status: 'Pending',
+                assignedAdminIds: Array.from(new Set([...(o.assignedAdminIds || []), ownerId])),
+              }
               : o
           ),
         })),

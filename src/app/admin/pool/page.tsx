@@ -39,7 +39,7 @@ const ClaimOrderButton = ({ order, onClaim, onAfterClaim }: { order: Order; onCl
 
 export default function OrderPoolPage() {
     const { user } = useSessionUser();
-    const { data: orders, loading, claimOrder, deleteOrder, refresh } = useOrders({ statusIn: ['Pooled'] });
+    const { data: orders, loading, claimOrder, deleteOrder, refresh } = useOrders({ statusIn: ['Pooled'] as any });
 
     const claimableOrders = orders?.filter(order => !order.assignedAdminIds.includes(user?.id || ''));
 
@@ -51,15 +51,15 @@ export default function OrderPoolPage() {
                     These orders have been released by their original assignees. Claim one to begin processing.
                 </CardDescription>
                 <div className="mt-3 rounded-lg border border-amber-500/50 bg-amber-100 px-4 py-3 shadow-sm flex items-start gap-3">
-                  <div className="mt-0.5 text-amber-800">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-amber-800 font-bold">Important</p>
-                    <p className="text-sm font-semibold text-amber-900">
-                      Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
-                    </p>
-                  </div>
+                    <div className="mt-0.5 text-amber-800">
+                        <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <p className="text-xs uppercase tracking-wide text-amber-800 font-bold">Important</p>
+                        <p className="text-sm font-semibold text-amber-900">
+                            Warning: if you DO NOT HAVE THE STL DO NOT CLAIM IT!
+                        </p>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -87,7 +87,7 @@ export default function OrderPoolPage() {
                         ) : claimableOrders && claimableOrders.length > 0 ? (
                             claimableOrders.map((order) => (
                                 <TableRow key={order.id}>
-                                    <TableCell className="font-mono text-xs">{order.id.substring(0,12)}...</TableCell>
+                                    <TableCell className="font-mono text-xs">{order.id.substring(0, 12)}...</TableCell>
                                     <TableCell>
                                         {order.orderDate
                                             ? (() => {
@@ -100,7 +100,7 @@ export default function OrderPoolPage() {
                                             : 'N/A'}
                                     </TableCell>
                                     <TableCell>{order.items.reduce((acc, item) => acc + item.quantity, 0)}</TableCell>
-                    <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
+                                    <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex items-center justify-end gap-2">
                                             <ClaimOrderButton order={order} onClaim={claimOrder} onAfterClaim={refresh} />

@@ -46,7 +46,8 @@ async function getPrioritizedIds() {
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -75,7 +76,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const prioritizedIds = await getPrioritizedIds();
 
     const user = await prisma.user.update({
-      where: { id: params.id },
+      where: { id: id },
       data,
     });
 
@@ -113,9 +114,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
       const set = new Set(ids.filter(Boolean));
       if (prioritize) {
-        set.add(params.id);
+        set.add(id);
       } else {
-        set.delete(params.id);
+        set.delete(id);
       }
       const nextValue = JSON.stringify(Array.from(set));
       try {
@@ -132,7 +133,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         );
       }
 
-      const user = await prisma.user.findUnique({ where: { id: params.id } });
+      const user = await prisma.user.findUnique({ where: { id: id } });
       if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
       return NextResponse.json({
@@ -151,7 +152,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // Retry without priority flag for legacy DBs that error for other reasons.
     const { isPrioritizedStore, ...rest } = data;
     const user = await prisma.user.update({
-      where: { id: params.id },
+      where: { id: id },
       data: rest,
     });
 
@@ -170,14 +171,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const userId = params.id;
+    const userId = id;
 
     await prisma.$transaction(async (tx) => {
       // Gather related records to detach before deletion to avoid FK failures.

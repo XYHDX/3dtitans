@@ -35,7 +35,8 @@ function mapOrder(order: any) {
   };
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -44,7 +45,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { status, predictedFinishDate, isPrioritized, releaseToPool, claimForOwnerId, totalAmount, requestCancellation } = body;
 
   const existing = await prisma.order.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { assignments: true, items: true },
   });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -77,7 +78,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   if (releaseToPool) {
     data.status = 'Pooled';
-    await prisma.orderAssignment.deleteMany({ where: { orderId: params.id } });
+    await prisma.orderAssignment.deleteMany({ where: { orderId: id } });
   }
 
   if (claimForOwnerId) {
@@ -86,15 +87,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     await prisma.orderAssignment.upsert({
-      where: { orderId_ownerId: { orderId: params.id, ownerId: claimForOwnerId } },
+      where: { orderId_ownerId: { orderId: id, ownerId: claimForOwnerId } },
       update: { ownerEmail: user.email || null },
-      create: { orderId: params.id, ownerId: claimForOwnerId, ownerEmail: user.email || null },
+      create: { orderId: id, ownerId: claimForOwnerId, ownerEmail: user.email || null },
     });
     data.status = 'Pending';
   }
 
   const updated = await prisma.order.update({
-    where: { id: params.id },
+    where: { id },
     data,
     include: { assignments: true, items: true },
   });
@@ -102,7 +103,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json({ order: mapOrder(updated) });
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   const user = session?.user;
   if (!user || user.role !== 'admin') {
@@ -110,15 +112,15 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   }
 
   const existing = await prisma.order.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { items: true, assignments: true },
   });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   await prisma.$transaction([
-    prisma.orderAssignment.deleteMany({ where: { orderId: params.id } }),
-    prisma.orderItem.deleteMany({ where: { orderId: params.id } }),
-    prisma.order.delete({ where: { id: params.id } }),
+    prisma.orderAssignment.deleteMany({ where: { orderId: id } }),
+    prisma.orderItem.deleteMany({ where: { orderId: id } }),
+    prisma.order.delete({ where: { id } }),
   ]);
 
   return NextResponse.json({ ok: true });
