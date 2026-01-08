@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
         if (resend) {
             await resend.emails.send({
-                from: '3D Titans <onboarding@resend.dev>',
+                from: '3D Titans <noreply@3dtitans.org>',
                 to: email,
                 subject: 'Reset your password',
                 html: `
