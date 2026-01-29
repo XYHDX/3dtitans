@@ -10,7 +10,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { use } from 'react';
 
 function externalUrl(url?: string | null) {
   if (!url) return null;
@@ -26,8 +25,8 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export default function StoreDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+export default function StoreDetailPage({ params }: { params: { slug: string } }) {
+  const { slug } = params;
   const { data: store, loading: storeLoading } = useStore(slug);
   const { data: products, loading: productsLoading } = useProducts({ storeSlug: slug });
   const { t } = useTranslation();
