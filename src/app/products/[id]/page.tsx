@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Star, Box, ShoppingCart, Plus, Minus, ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useMemo, useState, use } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { Badge } from '@/components/ui/badge';
 import { useProducts } from '@/hooks/use-data';
@@ -17,8 +17,9 @@ import Link from 'next/link';
 import { useTranslation } from '@/components/language-provider';
 import { useSessionUser } from '@/hooks/use-session';
 
-export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+// eslint-disable-next-line
+export default function ProductDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const { data: products, loading } = useProducts();
   const { toast } = useToast();
   const { addToCart, getItemQuantity } = useCart();
