@@ -64,15 +64,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        {/* No-flash theme bootstrap — must run before any styles paint */}
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body className={cn(
         pressStart.variable,
         spaceMono.variable,
         'antialiased min-h-screen bg-background text-foreground flex flex-col'
       )}>
+        {/* No-flash theme bootstrap — runs before React hydration paints. */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AppProviders>
           <Header />
           <main className="flex-grow w-full">
