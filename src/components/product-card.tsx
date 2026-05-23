@@ -11,14 +11,17 @@ import { useCart } from '@/hooks/use-cart';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from './language-provider';
 import { useSessionUser } from '@/hooks/use-session';
+import { WishlistButton } from './wishlist-button';
 
 interface ProductCardProps {
   product: Product;
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  const rating = product.rating || 4.5;
-  const reviewCount = product.reviewCount || Math.floor(Math.random() * 200) + 1;
+  // Real data only — no fake fallbacks. New products show 0 ratings honestly.
+  const rating = product.rating ?? 0;
+  const reviewCount = product.reviewCount ?? 0;
+  const hasReviews = reviewCount > 0;
   const primaryImage = product.imageGallery?.[0] || product.imageUrl || 'https://placehold.co/600x400';
   const { addToCart } = useCart();
   const { toast } = useToast();
@@ -80,6 +83,7 @@ export function ProductCard({ product }: ProductCardProps) {
             {t('productCard.preview')}
           </Badge>
         )}
+        <WishlistButton productId={product.id} insideLink className="absolute bottom-2 left-2" />
       </CardHeader>
       <CardContent className="p-4 flex-grow">
         <p className="text-[10px] font-headline uppercase tracking-wider text-muted-foreground">{product.category}</p>
@@ -89,10 +93,16 @@ export function ProductCard({ product }: ProductCardProps) {
           </Link>
         </h3>
         <div className="flex items-center mt-3 text-xs text-muted-foreground">
-          <Star className="h-3.5 w-3.5 mr-1 text-accent fill-accent" />
-          <span className="font-bold text-foreground">{rating.toFixed(1)}</span>
-          <span className="mx-1.5">·</span>
-          <span>{t('productCard.reviews', '', { count: reviewCount })}</span>
+          {hasReviews ? (
+            <>
+              <Star className="h-3.5 w-3.5 mr-1 text-accent fill-accent" />
+              <span className="font-bold text-foreground">{rating.toFixed(1)}</span>
+              <span className="mx-1.5">·</span>
+              <span>{t('productCard.reviews', '', { count: reviewCount })}</span>
+            </>
+          ) : (
+            <span className="italic">No reviews yet</span>
+          )}
         </div>
       </CardContent>
       <CardFooter className="p-4 pt-0">

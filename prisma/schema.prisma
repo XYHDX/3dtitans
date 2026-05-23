@@ -26,6 +26,8 @@ model User {
   stores           Store[]
   orders           Order[]           @relation("UserOrders")
   orderAssignments OrderAssignment[] @relation("AssignmentOwner")
+  reviews          Review[]
+  wishlist         WishlistItem[]
 
   accounts Account[]
   sessions Session[]
@@ -53,7 +55,42 @@ model Product {
   store      Store? @relation(fields: [storeId], references: [id])
   storeId    String?
 
-  orderItems OrderItem[]
+  orderItems   OrderItem[]
+  reviews      Review[]
+  wishlistedBy WishlistItem[]
+}
+
+/// User-submitted review of a Product. One per (user, product) pair.
+/// After insert/update/delete, Product.rating + reviewCount should be recomputed.
+model Review {
+  id               String   @id @default(cuid())
+  rating           Int
+  title            String?
+  body             String?
+  verifiedPurchase Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([productId, userId])
+  @@index([productId, createdAt])
+}
+
+/// Many-to-many wishlist between users and products.
+model WishlistItem {
+  addedAt DateTime @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  @@id([userId, productId])
+  @@index([userId, addedAt])
 }
 
 model Upload {

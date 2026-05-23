@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useTranslation } from '@/components/language-provider';
 import { useSessionUser } from '@/hooks/use-session';
+import { ProductReviews } from '@/components/product-reviews';
 
 // eslint-disable-next-line
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
@@ -275,6 +276,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
           </div>
         </div>
       </Card>
+
+      {/* Phase 2 — reviews */}
+      <ProductReviews productId={id} />
     </div>
   );
 }
