@@ -1,11 +1,14 @@
-
 import type { Metadata } from 'next';
 import { Press_Start_2P, Space_Mono } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
+import { prisma } from '@/lib/db';
+import { authOptions } from '@/lib/auth/options';
+import { getServerSession } from 'next-auth';
 import { Toaster } from '@/components/ui/toaster';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
+import { MaintenanceScreen } from '@/components/maintenance-screen';
 import { AppProviders } from './providers';
 
 // Brand v2 fonts — Press Start 2P for headlines, Space Mono for body.
@@ -45,8 +48,7 @@ export const metadata: Metadata = {
   }
 };
 
-// Inline no-flash theme script. Runs synchronously before the body renders, so
-// dark-mode users never see a light-mode flash on first paint.
+// Inline no-flash theme script. Runs synchronously before the body renders.
 const themeScript = `
 (function(){try{
   var s = localStorage.getItem('titans-theme');
@@ -57,11 +59,40 @@ const themeScript = `
 }catch(e){}})();
 `;
 
-export default function RootLayout({
+/**
+ * Pull the maintenance flag + message from SiteSetting. Wrapped in try/catch
+ * so a transient DB hiccup never takes the whole site down — we fail open.
+ */
+async function getMaintenanceStatus(): Promise<{ active: boolean; message: string }> {
+  try {
+    const rows = await prisma.siteSetting.findMany({
+      where: { key: { in: ['site.maintenanceMode', 'site.maintenanceMessage'] } },
+    });
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    return {
+      active: map['site.maintenanceMode'] === 'true',
+      message: map['site.maintenanceMessage'] || 'Be back shortly.',
+    };
+  } catch (err) {
+    console.error('maintenance status fetch failed', err);
+    return { active: false, message: '' };
+  }
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const maintenance = await getMaintenanceStatus();
+  let isAdmin = false;
+  if (maintenance.active) {
+    // Only check session when maintenance is on (cost-saving)
+    const session = await getServerSession(authOptions);
+    isAdmin = session?.user?.role === 'admin';
+  }
+  const showMaintenance = maintenance.active && !isAdmin;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn(
@@ -72,11 +103,17 @@ export default function RootLayout({
         {/* No-flash theme bootstrap — runs before React hydration paints. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AppProviders>
-          <Header />
-          <main className="flex-grow w-full">
-            {children}
-          </main>
-          <Footer />
+          {showMaintenance ? (
+            <MaintenanceScreen message={maintenance.message} />
+          ) : (
+            <>
+              <Header />
+              <main className="flex-grow w-full">
+                {children}
+              </main>
+              <Footer />
+            </>
+          )}
           <Toaster />
         </AppProviders>
       </body>

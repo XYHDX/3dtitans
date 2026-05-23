@@ -1,12 +1,14 @@
 
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowUp, ArrowDown, Package, UploadCloud, Users, ShoppingBag, GripVertical } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Package, UploadCloud, Users, ShoppingBag } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useUploads, useOrders, useStores } from '@/hooks/use-data';
 import { useUsers } from '@/hooks/use-session';
@@ -15,12 +17,15 @@ import { format } from 'date-fns';
 
 export default function DashboardPage() {
     const { user } = useSessionUser();
+    const { toast } = useToast();
     const { data: products, loading: productsLoading } = useProducts();
     const { data: uploads, loading: uploadsLoading } = useUploads();
     const { data: orders, loading: ordersLoading } = useOrders();
     const { data: users, loading: usersLoading } = useUsers();
-    const { data: stores, loading: storesLoading } = useStores({ includeUnpublished: true });
-    const [storeSort, setStoreSort] = useState<'recent' | 'name' | 'products'>('recent');
+    const { data: stores, loading: storesLoading, refresh: refreshStores } = useStores({ includeUnpublished: true });
+    const [storeSort, setStoreSort] = useState<'manual' | 'recent' | 'name' | 'products'>('manual');
+    const [manualOrder, setManualOrder] = useState<string[]>([]);
+    const [savingOrder, setSavingOrder] = useState(false);
     const isLoading = productsLoading || uploadsLoading || ordersLoading || usersLoading;
 
     const getDateValue = (value?: any) => {
@@ -36,18 +41,67 @@ export default function DashboardPage() {
         return format(new Date(ts), 'PPP');
     };
 
+    // Initialize manual order from server data, preserving server sortOrder when present
+    useEffect(() => {
+        if (!stores || stores.length === 0) return;
+        // Don't overwrite local rearrangements once the user has touched them
+        if (manualOrder.length === 0) {
+            const ordered = [...stores].sort((a: any, b: any) => {
+                const ao = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+                const bo = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+                if (ao !== bo) return ao - bo;
+                return getDateValue(b.updatedAt || b.createdAt) - getDateValue(a.updatedAt || a.createdAt);
+            });
+            setManualOrder(ordered.map((s) => s.id));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [stores]);
+
     const sortedStores = useMemo(() => {
         const list = stores || [];
+        if (storeSort === 'manual') {
+            const byId = new Map(list.map((s) => [s.id, s]));
+            // Use saved manual order; fall back to any newly-added stores at the end
+            const known = manualOrder.map((id) => byId.get(id)).filter(Boolean) as typeof list;
+            const extras = list.filter((s) => !manualOrder.includes(s.id));
+            return [...known, ...extras];
+        }
         return [...list].sort((a, b) => {
-            if (storeSort === 'name') {
-                return a.name.localeCompare(b.name);
-            }
-            if (storeSort === 'products') {
-                return (b.productsCount || 0) - (a.productsCount || 0);
-            }
+            if (storeSort === 'name') return a.name.localeCompare(b.name);
+            if (storeSort === 'products') return (b.productsCount || 0) - (a.productsCount || 0);
             return getDateValue(b.updatedAt || b.createdAt) - getDateValue(a.updatedAt || a.createdAt);
         });
-    }, [stores, storeSort]);
+    }, [stores, storeSort, manualOrder]);
+
+    function moveStore(id: string, direction: -1 | 1) {
+        setManualOrder((prev) => {
+            const idx = prev.indexOf(id);
+            if (idx < 0) return prev;
+            const next = idx + direction;
+            if (next < 0 || next >= prev.length) return prev;
+            const out = [...prev];
+            [out[idx], out[next]] = [out[next], out[idx]];
+            return out;
+        });
+    }
+
+    async function saveOrder() {
+        setSavingOrder(true);
+        try {
+            const res = await fetch('/api/admin/stores/reorder', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: manualOrder }),
+            });
+            if (!res.ok) throw new Error('Reorder failed');
+            toast({ title: 'Store order saved', description: 'New ordering is live across the site.' });
+            await refreshStores();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Save failed', description: e.message });
+        } finally {
+            setSavingOrder(false);
+        }
+    }
 
     if (user?.role !== 'admin') {
         return (
@@ -120,17 +174,24 @@ export default function DashboardPage() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="manual">Manual order</SelectItem>
                                     <SelectItem value="recent">Newest updated</SelectItem>
                                     <SelectItem value="name">Name (A-Z)</SelectItem>
                                     <SelectItem value="products">Products count</SelectItem>
                                 </SelectContent>
                             </Select>
+                            {storeSort === 'manual' && (
+                                <Button size="sm" onClick={saveOrder} disabled={savingOrder}>
+                                    {savingOrder ? 'Saving…' : 'Save order'}
+                                </Button>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    {storeSort === 'manual' && <TableHead className="w-20">Order</TableHead>}
                                     <TableHead>Store</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Products</TableHead>
@@ -153,11 +214,42 @@ export default function DashboardPage() {
                                         </TableRow>
                                     ))
                                 ) : sortedStores.length > 0 ? (
-                                    sortedStores.map((store) => (
+                                    sortedStores.map((store, idx) => (
                                         <TableRow key={store.id}>
+                                            {storeSort === 'manual' && (
+                                                <TableCell>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button
+                                                            size="icon"
+                                                            variant="outline"
+                                                            onClick={() => moveStore(store.id, -1)}
+                                                            disabled={idx === 0}
+                                                            aria-label={`Move ${store.name} up`}
+                                                            className="h-7 w-7"
+                                                        >
+                                                            <ArrowUp className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="outline"
+                                                            onClick={() => moveStore(store.id, 1)}
+                                                            disabled={idx === sortedStores.length - 1}
+                                                            aria-label={`Move ${store.name} down`}
+                                                            className="h-7 w-7"
+                                                        >
+                                                            <ArrowDown className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                             <TableCell>
-                                                <div className="font-medium">{store.name}</div>
-                                                <div className="text-xs text-muted-foreground">/{store.slug}</div>
+                                                <div className="flex items-center gap-2">
+                                                    {storeSort === 'manual' && <GripVertical className="h-4 w-4 text-muted-foreground" />}
+                                                    <div>
+                                                        <div className="font-medium">{store.name}</div>
+                                                        <div className="text-xs text-muted-foreground">/{store.slug}</div>
+                                                    </div>
+                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant={store.isPublished ? 'default' : 'secondary'}>
@@ -170,7 +262,7 @@ export default function DashboardPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center h-16 text-muted-foreground">
+                                        <TableCell colSpan={storeSort === 'manual' ? 5 : 4} className="text-center h-16 text-muted-foreground">
                                             No stores found.
                                         </TableCell>
                                     </TableRow>

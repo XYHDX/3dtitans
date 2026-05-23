@@ -23,6 +23,7 @@ function mapStore(store: any, extraProductsCount?: number) {
     websiteUrl: store.websiteUrl || null,
     ownerId: store.ownerId,
     isPublished: !!store.isPublished,
+    sortOrder: typeof store.sortOrder === 'number' ? store.sortOrder : 0,
     productsCount: extraProductsCount ?? store._count?.products ?? undefined,
     createdAt: store.createdAt,
     updatedAt: store.updatedAt,
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
 
     const stores = await prisma.store.findMany({
       where,
-      orderBy: [{ isPublished: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ isPublished: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
       include: { _count: { select: { products: true } } },
     });
 
