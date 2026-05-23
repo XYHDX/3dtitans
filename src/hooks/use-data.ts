@@ -1,0 +1,492 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  Order,
+  Product,
+  Upload,
+  SiteSettings,
+  ContactSubmission,
+  NewsletterSubscription,
+  Store,
+} from '@/lib/types';
+
+// Products
+export function useProducts(filter?: { uploaderId?: string; storeId?: string; storeSlug?: string }) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter?.uploaderId) params.set('uploaderId', filter.uploaderId);
+      if (filter?.storeId) params.set('storeId', filter.storeId);
+      if (filter?.storeSlug) params.set('storeSlug', filter.storeSlug);
+      const qs = params.toString();
+
+      const res = await fetch(`/api/products${qs ? `?${qs}` : ''}`);
+      const data = await res.json();
+      setProducts(data.products || []);
+    } catch (error) {
+      console.error('Failed to fetch products', error);
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter?.storeId, filter?.storeSlug, filter?.uploaderId]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const addProduct = useCallback(async (payload: Omit<Product, 'id'>) => {
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setProducts((prev) => [data.product, ...prev]);
+    return data.product as Product;
+  }, []);
+
+  const updateProduct = useCallback(async (id: string, patch: Partial<Product>) => {
+    const res = await fetch(`/api/products/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setProducts((prev) => prev.map((p) => (p.id === id ? data.product : p)));
+    return data.product as Product;
+  }, []);
+
+  const deleteProduct = useCallback(async (id: string) => {
+    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    return true;
+  }, []);
+
+  const data = useMemo(() => {
+    let result = products;
+    if (filter?.uploaderId) result = result.filter((p) => p.uploaderId === filter.uploaderId);
+    if (filter?.storeId) result = result.filter((p) => p.storeId === filter.storeId);
+
+    const sorted = [...result].sort((a, b) => {
+      const prioritizedDiff = Number(!!b.isPrioritizedStore) - Number(!!a.isPrioritizedStore);
+      if (prioritizedDiff !== 0) return prioritizedDiff;
+      const uploaderA = (a.storeName || a.uploaderName || '').toLowerCase();
+      const uploaderB = (b.storeName || b.uploaderName || '').toLowerCase();
+      const uploaderDiff = uploaderA.localeCompare(uploaderB);
+      if (uploaderDiff !== 0) return uploaderDiff;
+      const ratingDiff = (b.rating || 0) - (a.rating || 0);
+      if (ratingDiff !== 0) return ratingDiff;
+      const reviewsDiff = (b.reviewCount || 0) - (a.reviewCount || 0);
+      if (reviewsDiff !== 0) return reviewsDiff;
+      const dateA = a.createdAt
+        ? new Date((a.createdAt as any).toDate ? (a.createdAt as any).toDate() : (a.createdAt as any)).getTime()
+        : 0;
+      const dateB = b.createdAt
+        ? new Date((b.createdAt as any).toDate ? (b.createdAt as any).toDate() : (b.createdAt as any)).getTime()
+        : 0;
+      return dateB - dateA;
+    });
+
+    return sorted;
+  }, [products, filter?.uploaderId]);
+
+  return { data, loading, refresh, addProduct, updateProduct, deleteProduct };
+}
+
+// Stores
+export function useStores(filter?: { ownerId?: string; includeUnpublished?: boolean }, options?: { skipFetch?: boolean }) {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter?.ownerId) params.set('ownerId', filter.ownerId);
+      if (filter?.includeUnpublished) params.set('published', 'false');
+      const qs = params.toString();
+      const res = await fetch(`/api/stores${qs ? `?${qs}` : ''}`);
+      const data = await res.json();
+      setStores(data.stores || []);
+    } catch (error) {
+      console.error('Failed to fetch stores', error);
+      setStores([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter?.includeUnpublished, filter?.ownerId, options?.skipFetch]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const createStore = useCallback(async (payload: Partial<Store> & { name: string; slug: string }) => {
+    const res = await fetch('/api/stores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setStores((prev) => {
+      const filtered = prev.filter((s) => s.id !== data.store.id);
+      return [data.store, ...filtered];
+    });
+    return data.store as Store;
+  }, []);
+
+  const updateStore = useCallback(async (slug: string, patch: Partial<Store>) => {
+    const res = await fetch(`/api/stores/${slug}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setStores((prev) => prev.map((s) => (s.id === data.store.id ? data.store : s)));
+    return data.store as Store;
+  }, []);
+
+  return { data: stores, loading, refresh, createStore, updateStore };
+}
+
+export function useStore(slug?: string, options?: { skipFetch?: boolean }) {
+  const [store, setStore] = useState<Store | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!slug) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/stores/${slug}`);
+      const data = await res.json();
+      setStore(data.store || null);
+    } catch (error) {
+      console.error('Failed to fetch store', error);
+      setStore(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [options?.skipFetch, refresh]);
+
+  return { data: store, loading, refresh };
+}
+
+// Uploads
+export function useUploads(options?: { skipFetch?: boolean }) {
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/uploads');
+      const data = await res.json();
+      setUploads(data.uploads || []);
+    } catch (error) {
+      console.error('Failed to fetch uploads', error);
+      setUploads([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [refresh, options?.skipFetch]);
+
+  const addUpload = useCallback(async (payload: Omit<Upload, 'id' | 'createdAt'>) => {
+    const res = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setUploads((prev) => [data.upload, ...prev]);
+    return data.upload as Upload;
+  }, []);
+
+  const deleteUpload = useCallback(async (id: string) => {
+    const res = await fetch(`/api/uploads/${id}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    setUploads((prev) => prev.filter((u) => u.id !== id));
+    return true;
+  }, []);
+
+  const assignUpload = useCallback(async (id: string, assignedOwnerId: string | null) => {
+    const res = await fetch(`/api/uploads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedOwnerId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.upload } : u)));
+    return data.upload as Upload;
+  }, []);
+
+  return { data: uploads, loading, refresh, addUpload, deleteUpload, assignUpload };
+}
+
+// Orders
+export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'][] }, options?: { skipFetch?: boolean }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/orders');
+      const data = await res.json();
+      setOrders(data.orders || []);
+    } catch (error) {
+      console.error('Failed to fetch orders', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [refresh, options?.skipFetch]);
+
+  const createOrder = useCallback(async (payload: any) => {
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return { ok: false };
+    const data = await res.json();
+    setOrders((prev) => [data.order, ...prev]);
+    return { ok: true, order: data.order as Order };
+  }, []);
+
+  const updateOrder = useCallback(async (id: string, patch: Partial<Order>) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: patch.status,
+        predictedFinishDate: (patch as any).predictedFinishDate,
+        isPrioritized: patch.isPrioritized,
+        totalAmount: patch.totalAmount,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+    return data.order as Order;
+  }, []);
+
+  const requestCancelOrder = useCallback(async (id: string) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestCancellation: true }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+    return data.order as Order;
+  }, []);
+
+  const releaseOrderToPool = useCallback(async (id: string) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ releaseToPool: true }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+    return data.order as Order;
+  }, []);
+
+  const claimOrder = useCallback(async (id: string, ownerId: string) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claimForOwnerId: ownerId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+    return data.order as Order;
+  }, []);
+
+  const deleteOrder = useCallback(async (id: string) => {
+    const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    return true;
+  }, []);
+
+  const data = useMemo(() => {
+    let result = orders;
+    if (filter?.ownerId) {
+      result = result.filter((o) => o.assignedAdminIds?.includes(filter.ownerId!));
+    }
+    if (filter?.statusIn) {
+      result = result.filter((o) => filter.statusIn?.includes(o.status));
+    }
+    return result;
+  }, [orders, filter?.ownerId, filter?.statusIn]);
+
+  return { data, loading, refresh, createOrder, updateOrder, requestCancelOrder, releaseOrderToPool, claimOrder, deleteOrder };
+}
+
+// Settings
+export function useSiteSettings() {
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      setSettings(data.settings || null);
+    } catch (error) {
+      console.error('Failed to fetch settings', error);
+      setSettings(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const saveSettings = useCallback(async (payload: SiteSettings) => {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return false;
+    setSettings(payload);
+    return true;
+  }, []);
+
+  return { data: settings, loading, refresh, saveSettings };
+}
+
+// Contact submissions
+export function useContactSubmissions(options?: { skipFetch?: boolean }) {
+  const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/contact');
+      const data = await res.json();
+      setSubmissions(data.submissions || []);
+    } catch (error) {
+      console.error('Failed to fetch contact submissions', error);
+      setSubmissions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [refresh, options?.skipFetch]);
+
+  const submitContact = useCallback(async (payload: Omit<ContactSubmission, 'id' | 'createdAt'>) => {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setSubmissions((prev) => [data.submission, ...prev]);
+    return data.submission as ContactSubmission;
+  }, []);
+
+  return { data: submissions, loading, refresh, submitContact };
+}
+
+// Newsletter
+export function useNewsletterSubscriptions(options?: { skipFetch?: boolean }) {
+  const [subs, setSubs] = useState<NewsletterSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/newsletter');
+      const data = await res.json();
+      setSubs(data.subscriptions || []);
+    } catch (error) {
+      console.error('Failed to fetch newsletter subscriptions', error);
+      setSubs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (options?.skipFetch) {
+      setLoading(false);
+      return;
+    }
+    refresh();
+  }, [refresh, options?.skipFetch]);
+
+  const subscribe = useCallback(async (email: string) => {
+    const res = await fetch('/api/newsletter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setSubs((prev) => [data.subscription, ...prev.filter((s: any) => s.id !== data.subscription.id)]);
+    return data.subscription as NewsletterSubscription;
+  }, []);
+
+  return { data: subs, loading, refresh, subscribe };
+}

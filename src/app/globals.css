@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================
+   3D Titans — Visual Identity v2.0
+   Tokens follow the Brand System guide.
+   ===================================================== */
+@layer base {
+  :root {
+    /* Surfaces */
+    --background: 210 17% 98%;       /* Crisp White #F8F9FA */
+    --foreground: 240 7% 7%;         /* Titan Black #0F0F11 */
+    --card: 210 17% 98%;
+    --card-foreground: 240 7% 7%;
+    --popover: 210 17% 98%;
+    --popover-foreground: 240 7% 7%;
+
+    /* Primary CTA = Arcade Yellow on Titan Black */
+    --primary: 45 100% 51%;          /* Arcade Yellow #FFC107 */
+    --primary-foreground: 240 7% 7%; /* Titan Black */
+
+    /* Secondary = Titan Black surface */
+    --secondary: 240 7% 7%;
+    --secondary-foreground: 210 17% 98%;
+
+    /* Muted / placeholders */
+    --muted: 210 11% 93%;
+    --muted-foreground: 218 4% 38%;
+
+    /* Accent stays Arcade Yellow for highlights/hovers */
+    --accent: 45 100% 51%;
+    --accent-foreground: 240 7% 7%;
+
+    /* Destructive — Pixel Red */
+    --destructive: 7 60% 49%;
+    --destructive-foreground: 210 17% 98%;
+
+    /* Lines */
+    --border: 240 7% 7%;             /* Titan Black borders */
+    --input: 240 7% 7%;
+    --ring: 45 100% 51%;             /* Yellow focus ring */
+
+    /* Brand palette extras */
+    --titan-black: 240 7% 7%;
+    --crisp-white: 210 17% 98%;
+    --interface-gray: 218 3% 56%;
+    --kraft-cardboard: 30 41% 59%;
+    --recycled-tissue: 38 50% 81%;
+    --arcade-yellow: 45 100% 51%;
+    --pixel-red: 7 60% 49%;
+    --pixel-green: 124 38% 49%;
+    --pixel-cyan: 207 89% 60%;
+
+    --radius: 0px;                   /* Pixel-square corners */
+  }
+
+  .dark {
+    --background: 240 7% 7%;
+    --foreground: 210 17% 98%;
+    --card: 240 8% 11%;
+    --card-foreground: 210 17% 98%;
+    --popover: 240 8% 11%;
+    --popover-foreground: 210 17% 98%;
+
+    --primary: 45 100% 51%;
+    --primary-foreground: 240 7% 7%;
+
+    --secondary: 240 8% 15%;
+    --secondary-foreground: 210 17% 98%;
+
+    --muted: 240 8% 15%;
+    --muted-foreground: 210 8% 70%;
+
+    --accent: 45 100% 51%;
+    --accent-foreground: 240 7% 7%;
+
+    --destructive: 7 60% 49%;
+    --destructive-foreground: 210 17% 98%;
+
+    --border: 210 17% 98%;
+    --input: 210 17% 98%;
+    --ring: 45 100% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-space-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+    background-image:
+      linear-gradient(hsl(var(--foreground) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.045) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  h1, h2, h3, h4, h5, h6, .font-headline {
+    font-family: var(--font-press-start), 'Press Start 2P', monospace;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  img { image-rendering: pixelated; }
+}
+
+/* =====================================================
+   Brand utility classes
+   ===================================================== */
+@layer components {
+  /* Pixel-frame surface: hard border + block shadow */
+  .pixel-frame {
+    @apply border-[3px] border-foreground bg-card text-card-foreground;
+    box-shadow: 6px 6px 0 0 hsl(var(--foreground));
+  }
+  .dark .pixel-frame { box-shadow: 6px 6px 0 0 hsl(var(--accent)); }
+
+  .pixel-frame-sm {
+    @apply border-[2px] border-foreground;
+    box-shadow: 4px 4px 0 0 hsl(var(--foreground));
+  }
+  .dark .pixel-frame-sm { box-shadow: 4px 4px 0 0 hsl(var(--accent)); }
+
+  .pixel-frame-lg {
+    @apply border-[4px] border-foreground;
+    box-shadow: 10px 10px 0 0 hsl(var(--foreground));
+  }
+  .dark .pixel-frame-lg { box-shadow: 10px 10px 0 0 hsl(var(--accent)); }
+
+  /* Stepped pixel corners */
+  .pixel-corners {
+    clip-path: polygon(
+      0 8px, 8px 8px, 8px 0,
+      calc(100% - 8px) 0, calc(100% - 8px) 8px, 100% 8px,
+      100% calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), calc(100% - 8px) 100%,
+      8px 100%, 8px calc(100% - 8px), 0 calc(100% - 8px)
+    );
+  }
+
+  /* Hard-cut hover lift used by buttons and cards */
+  .pixel-lift {
+    transition: transform 60ms steps(2, end), box-shadow 60ms steps(2, end);
+  }
+  .pixel-lift:hover {
+    transform: translate(-2px, -2px);
+  }
+  .pixel-lift:active {
+    transform: translate(2px, 2px);
+  }
+
+  /* Sticker label */
+  .sticker {
+    @apply inline-block border-[2px] border-foreground bg-accent text-accent-foreground px-2 py-1 font-bold;
+    font-family: var(--font-press-start), 'Press Start 2P', monospace;
+    font-size: 0.625rem;
+    letter-spacing: 0.04em;
+  }
+}
+
+/* =====================================================
+   Motion (pixel-snap, no easing)
+   ===================================================== */
+@layer utilities {
+  .anim-snap        { transition: all 80ms steps(4, end); }
+  .anim-snap-fast   { transition: all 40ms steps(2, end); }
+  .anim-pulse-cube  { animation: pixel-pulse 1200ms steps(4, end) infinite; }
+  .text-shadow-pixel { text-shadow: 3px 3px 0 hsl(var(--foreground)); }
+}
+
+@keyframes pixel-pulse {
+  0%   { transform: scale(1);    }
+  25%  { transform: scale(1.08); }
+  50%  { transform: scale(0.94); }
+  75%  { transform: scale(1.04); }
+  100% { transform: scale(1);    }
+}
+
+@keyframes pixel-reveal {
+  from { max-width: 0; }
+  to   { max-width: 100%; }
+}

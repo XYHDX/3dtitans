@@ -1,0 +1,237 @@
+import { authOptions } from '@/lib/auth/options';
+import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+
+async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || session.user.role !== 'admin') {
+    return null;
+  }
+  return session;
+}
+
+async function ensureSiteSettingTable() {
+  try {
+    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
+    return true;
+  } catch (error) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "SiteSetting" (
+          "key" TEXT PRIMARY KEY,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      return true;
+    } catch (err) {
+      console.error('Failed to ensure SiteSetting table', err);
+      return false;
+    }
+  }
+}
+
+async function getPrioritizedIds() {
+  const ok = await ensureSiteSettingTable();
+  if (!ok) return new Set<string>();
+  try {
+    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    if (!prioritizedSetting?.value) return new Set<string>();
+    return new Set<string>(JSON.parse(prioritizedSetting.value));
+  } catch (error) {
+    console.error('Failed to read prioritizedStoreIds', error);
+    return new Set<string>();
+  }
+}
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const data: Record<string, any> = {};
+
+  if (body.role) {
+    data.role = body.role;
+  }
+
+  if (typeof body.emailVerified === 'boolean') {
+    data.emailVerified = body.emailVerified ? new Date() : null;
+  }
+
+  if (typeof body.isPrioritizedStore === 'boolean') {
+    data.isPrioritizedStore = body.isPrioritizedStore;
+  }
+
+  if (!Object.keys(data).length) {
+    return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+  }
+
+  try {
+    const prioritizedIds = await getPrioritizedIds();
+
+    const user = await prisma.user.update({
+      where: { id: id },
+      data,
+    });
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user.role as any) || 'user',
+        image: user.image,
+        emailVerified: !!user.emailVerified,
+        createdAt: user.createdAt,
+        isPrioritizedStore: !!user.isPrioritizedStore || prioritizedIds.has(user.id),
+      },
+    });
+  } catch (error) {
+    console.error('User update failed (priority flag)', error);
+    const message = (error as any)?.message || '';
+    if (message.includes('Unknown column') || message.includes('isPrioritizedStore')) {
+      // Fallback: store prioritized IDs in SiteSetting so toggles still work without the column.
+      const prioritize = !!body.isPrioritizedStore;
+      const ensureOk = await ensureSiteSettingTable();
+      if (!ensureOk) {
+        return NextResponse.json(
+          { error: 'Could not persist priority flag. SiteSetting table is missing and could not be created.' },
+          { status: 500 }
+        );
+      }
+      const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+      let ids: string[] = [];
+      try {
+        ids = prioritizedSetting?.value ? JSON.parse(prioritizedSetting.value) : [];
+      } catch {
+        ids = [];
+      }
+      const set = new Set(ids.filter(Boolean));
+      if (prioritize) {
+        set.add(id);
+      } else {
+        set.delete(id);
+      }
+      const nextValue = JSON.stringify(Array.from(set));
+      try {
+        await prisma.siteSetting.upsert({
+          where: { key: 'prioritizedStoreIds' },
+          update: { value: nextValue },
+          create: { key: 'prioritizedStoreIds', value: nextValue },
+        });
+      } catch (err) {
+        console.error('Failed to upsert prioritizedStoreIds setting', err);
+        return NextResponse.json(
+          { error: 'Could not persist priority flag. Ensure SiteSetting table is available.' },
+          { status: 500 }
+        );
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: id } });
+      if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+      return NextResponse.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: (user.role as any) || 'user',
+          image: user.image,
+          emailVerified: !!user.emailVerified,
+          createdAt: user.createdAt,
+          isPrioritizedStore: prioritize,
+        },
+      });
+    }
+    // Retry without priority flag for legacy DBs that error for other reasons.
+    const { isPrioritizedStore, ...rest } = data;
+    const user = await prisma.user.update({
+      where: { id: id },
+      data: rest,
+    });
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user.role as any) || 'user',
+        image: user.image,
+        emailVerified: !!user.emailVerified,
+        createdAt: user.createdAt,
+        isPrioritizedStore: !!user.isPrioritizedStore,
+      },
+    });
+  }
+}
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const userId = id;
+
+    await prisma.$transaction(async (tx) => {
+      // Gather related records to detach before deletion to avoid FK failures.
+      const stores = await tx.store.findMany({ where: { ownerId: userId }, select: { id: true } });
+      const storeIds = stores.map((s) => s.id);
+
+      const uploaderProducts = await tx.product.findMany({ where: { uploaderId: userId }, select: { id: true } });
+      const storeProducts = storeIds.length
+        ? await tx.product.findMany({ where: { storeId: { in: storeIds } }, select: { id: true } })
+        : [];
+
+      const productIds = Array.from(new Set([...uploaderProducts, ...storeProducts].map((p) => p.id)));
+
+      if (productIds.length) {
+        await tx.orderItem.updateMany({ where: { productId: { in: productIds } }, data: { productId: null } });
+      }
+
+      await tx.orderAssignment.deleteMany({ where: { ownerId: userId } });
+      await tx.order.updateMany({ where: { userId }, data: { userId: null } });
+
+      await tx.upload.updateMany({ where: { assignedOwnerId: userId }, data: { assignedOwnerId: null, assignedOwnerEmail: null } });
+      await tx.upload.deleteMany({ where: { userId } });
+
+      if (productIds.length) {
+        await tx.product.deleteMany({ where: { id: { in: productIds } } });
+      }
+
+      if (storeIds.length) {
+        await tx.store.deleteMany({ where: { id: { in: storeIds } } });
+      }
+
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    return NextResponse.json({ ok: true, message: 'User and related data removed.' });
+  } catch (error: any) {
+    console.error('User delete failed', error);
+    const code = error?.code;
+    let status = 400;
+    let message = error?.message || 'Failed to delete user';
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2003') {
+        status = 409;
+        message =
+          'Cannot delete this user while they still own products, stores, uploads, or orders. Remove or reassign those records first.';
+      } else if (error.code === 'P2025') {
+        status = 404;
+        message = 'User not found or already deleted.';
+      }
+    }
+
+    return NextResponse.json({ error: message, code }, { status });
+  }
+}
