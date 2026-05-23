@@ -76,7 +76,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-2 pr-8">
             <Link href="/" className="mb-4 inline-block">
-              <Logo />
+              {/* Footer surface is always dark (Titan Black) regardless of theme,
+                  so pin the white-ink lockup. Without forceTone the logo
+                  auto-swaps with the global theme and disappears in light mode. */}
+              <Logo forceTone="light" />
             </Link>
             <p className="text-secondary-foreground/70 text-sm max-w-sm mb-4">
               {settings?.footerBlurb || t('footer.blurbDefault')}
