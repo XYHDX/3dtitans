@@ -21,7 +21,6 @@ import { useProducts, useOrders } from '@/hooks/use-data';
 import { useAddresses } from '@/hooks/use-addresses';
 import { useTranslation } from '@/components/language-provider';
 import { MapPin } from 'lucide-react';
-import Link from 'next/link';
 
 type AddressFormData = {
   fullName: string;
