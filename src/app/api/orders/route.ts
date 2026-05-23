@@ -153,7 +153,13 @@ export async function POST(req: Request) {
     if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
     const body = await req.json();
-    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes } = body;
+    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes, paymentMethod } = body;
+
+    // Validate payment method (Phase 4)
+    const validMethods = ['cod', 'bank_transfer', 'sham_cash', 'syriatel_cash', 'stripe'];
+    if (paymentMethod && !validMethods.includes(paymentMethod)) {
+      return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Items are required' }, { status: 400 });
@@ -220,6 +226,8 @@ export async function POST(req: Request) {
       customerEmail: customerEmail || user?.email,
       isPrioritized: !!isPrioritized,
       notes: typeof notes === 'string' ? notes : '',
+      paymentMethod: paymentMethod || 'cod',
+      paymentStatus: 'pending',
       items: {
         create: items.map((item: any) => ({
           productId: item.productId,

@@ -66,7 +66,7 @@ export function Header() {
   
   const authContent = user ? (
     <div className="flex items-center gap-2">
-      <ThemeToggle />
+      <ThemeToggle className="hidden md:inline-flex" />
       {user.role !== 'store-owner' && (
         <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)} className="relative">
           <ShoppingCart className="h-5 w-5" />
@@ -143,7 +143,7 @@ export function Header() {
      </div>
   ) : (
      <div className="flex items-center gap-2">
-      <ThemeToggle />
+      <ThemeToggle className="hidden md:inline-flex" />
       <LanguageToggle />
       <Button asChild className="hidden md:inline-flex">
         <Link href="/login">{t('nav.login')} / {t('nav.signup')}</Link>
@@ -211,10 +211,11 @@ export function Header() {
                     </Link>
                   </Button>
                 )}
-                {/* Theme toggle — lives in the sheet for mobile users */}
+                {/* Theme toggle — lives in the sheet for mobile users.
+                    Forced visible here regardless of viewport since the sheet itself only opens on mobile. */}
                 <div className="flex items-center justify-between gap-3 mt-2">
                   <span className="text-xs font-headline uppercase tracking-wider">Theme</span>
-                  <ThemeToggle />
+                  <ThemeToggle className="inline-flex" />
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-headline uppercase tracking-wider">Language</span>

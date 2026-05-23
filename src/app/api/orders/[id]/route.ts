@@ -35,6 +35,43 @@ function mapOrder(order: any) {
   };
 }
 
+/** GET /api/orders/[id] — return one order. Visible to owner / customer / admin. */
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: true, assignments: true },
+    });
+    if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const isAdmin = user.role === 'admin';
+    const isOwner = user.role === 'store-owner' && (order.assignments || []).some((a) => a.ownerId === user.id);
+    const isCustomer =
+      (!!order.userId && order.userId === user.id) ||
+      (!!order.customerEmail && !!user.email && order.customerEmail.toLowerCase() === (user.email || '').toLowerCase());
+    if (!isAdmin && !isOwner && !isCustomer) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const mapped: any = mapOrder(order);
+    // Payment fields (Phase 4) — surface for the success page
+    mapped.paymentMethod    = (order as any).paymentMethod || null;
+    mapped.paymentStatus    = (order as any).paymentStatus || 'pending';
+    mapped.paymentReference = (order as any).paymentReference || null;
+    mapped.paymentProofUrl  = (order as any).paymentProofUrl || null;
+    mapped.paidAt           = (order as any).paidAt || null;
+    return NextResponse.json({ order: mapped });
+  } catch (err) {
+    console.error('orders GET [id]', err);
+    return NextResponse.json({ error: 'Failed to load order' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getServerSession(authOptions);

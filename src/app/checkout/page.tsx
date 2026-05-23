@@ -21,6 +21,8 @@ import { useProducts, useOrders } from '@/hooks/use-data';
 import { useAddresses } from '@/hooks/use-addresses';
 import { useTranslation } from '@/components/language-provider';
 import { MapPin } from 'lucide-react';
+import { PaymentMethodPicker } from '@/components/payment-method-picker';
+import type { PaymentMethod } from '@/hooks/use-payment-settings';
 
 type AddressFormData = {
   fullName: string;
@@ -67,6 +69,9 @@ export default function CheckoutPage() {
   const { addresses, defaultAddress, loading: addressesLoading } = useAddresses();
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
 
+  // Payment method (Phase 4)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+
   useEffect(() => {
     if (user) {
       setValue('fullName', user.displayName || '');
@@ -107,6 +112,10 @@ export default function CheckoutPage() {
     if (!user) {
       toast({ variant: 'destructive', title: t('checkout.loginRequiredTitle'), description: t('checkout.loginRequiredDesc') });
       router.push('/login');
+      return;
+    }
+    if (!paymentMethod) {
+      toast({ variant: 'destructive', title: 'Pick a payment method', description: 'Please choose how you want to pay.' });
       return;
     }
     if (user.role === 'store-owner') {
@@ -150,17 +159,35 @@ export default function CheckoutPage() {
         assignedAdminIds: assignedAdminIds,
         isPrioritized: false,
         notes: addressData.notes || '',
+        paymentMethod,
       };
 
       const result = await createOrder(orderData as any);
-      if (!result.ok) throw new Error('Failed to place order');
+      if (!result.ok || !result.order) throw new Error('Failed to place order');
+
+      // Stripe path — redirect to hosted checkout instead of the local success page.
+      if (paymentMethod === 'stripe') {
+        const stripeRes = await fetch('/api/payments/stripe/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: result.order.id }),
+        });
+        const stripeData = await stripeRes.json();
+        if (stripeRes.ok && stripeData.url) {
+          clearCart();
+          window.location.href = stripeData.url;
+          return;
+        }
+        // Fall through to success page if Stripe is misconfigured — admin will be notified
+        toast({ variant: 'destructive', title: 'Card payment unavailable', description: stripeData.error || 'Falling back to order confirmation.' });
+      }
 
       toast({
         title: t('checkout.toastSuccessTitle'),
         description: t('checkout.toastSuccessDesc'),
       });
       clearCart();
-      router.push('/');
+      router.push(`/checkout/success?orderId=${encodeURIComponent(result.order.id)}`);
 
     } catch (error) {
       console.error("Failed to place order:", error);
@@ -314,6 +341,20 @@ export default function CheckoutPage() {
               </form>
             </CardContent>
           </Card>
+
+          {/* Payment method picker (Phase 4) */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-2xl font-headline">Payment Method</CardTitle>
+              <CardDescription>Pick how you want to pay for this order.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} />
+              {!paymentMethod && (
+                <p className="text-xs text-muted-foreground mt-3">Select a method to continue.</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
         <div>
             <Card className="sticky top-24">
@@ -351,8 +392,8 @@ export default function CheckoutPage() {
               </CardContent>
               {cart.length > 0 && (
                 <CardFooter>
-                  <Button size="lg" className="w-full" type="submit" form="shipping-form" disabled={loading}>
-                    {loading ? t('checkout.placing') : t('checkout.placeOrder')}
+                  <Button size="lg" className="w-full" type="submit" form="shipping-form" disabled={loading || !paymentMethod}>
+                    {loading ? t('checkout.placing') : !paymentMethod ? 'Pick a payment method' : t('checkout.placeOrder')}
                   </Button>
                 </CardFooter>
               )}
