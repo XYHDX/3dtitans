@@ -45,6 +45,18 @@ export const metadata: Metadata = {
   }
 };
 
+// Inline no-flash theme script. Runs synchronously before the body renders, so
+// dark-mode users never see a light-mode flash on first paint.
+const themeScript = `
+(function(){try{
+  var s = localStorage.getItem('titans-theme');
+  var t = (s === 'dark' || s === 'light')
+    ? s
+    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  if (t === 'dark') document.documentElement.classList.add('dark');
+}catch(e){}})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -52,6 +64,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* No-flash theme bootstrap — must run before any styles paint */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={cn(
         pressStart.variable,
         spaceMono.variable,

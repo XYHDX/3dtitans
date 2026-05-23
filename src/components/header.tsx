@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { useRouter } from 'next/navigation';
 import { useTranslation } from './language-provider';
 import { LanguageToggle } from './language-toggle';
+import { ThemeToggle } from './theme-toggle';
 import { cn } from '@/lib/utils';
 
 export function Header() {
@@ -64,6 +65,7 @@ export function Header() {
   
   const authContent = user ? (
     <div className="flex items-center gap-2">
+      <ThemeToggle />
       {user.role !== 'store-owner' && (
         <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)} className="relative">
           <ShoppingCart className="h-5 w-5" />
@@ -126,6 +128,7 @@ export function Header() {
      </div>
   ) : (
      <div className="flex items-center gap-2">
+      <ThemeToggle />
       <LanguageToggle />
       <Button asChild className="hidden md:inline-flex">
         <Link href="/login">{t('nav.login')} / {t('nav.signup')}</Link>
