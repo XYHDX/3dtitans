@@ -28,6 +28,8 @@ model User {
   orderAssignments OrderAssignment[] @relation("AssignmentOwner")
   reviews          Review[]
   wishlist         WishlistItem[]
+  cart             CartItem[]
+  addresses        Address[]
 
   accounts Account[]
   sessions Session[]
@@ -58,6 +60,7 @@ model Product {
   orderItems   OrderItem[]
   reviews      Review[]
   wishlistedBy WishlistItem[]
+  cartItems    CartItem[]
 }
 
 /// User-submitted review of a Product. One per (user, product) pair.
@@ -91,6 +94,43 @@ model WishlistItem {
 
   @@id([userId, productId])
   @@index([userId, addedAt])
+}
+
+/// Server-side cart, one row per (user, product) pair.
+/// Guest users keep using localStorage; this kicks in on login.
+model CartItem {
+  quantity Int      @default(1)
+  addedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  @@id([userId, productId])
+  @@index([userId, addedAt])
+}
+
+/// Saved shipping address — checkout pre-fills from the default.
+model Address {
+  id          String   @id @default(cuid())
+  label       String?  // 'Home', 'Office', etc.
+  name        String   // Recipient's full name
+  line1       String
+  line2       String?
+  city        String
+  postalCode  String
+  country     String
+  phone       String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@index([userId, isDefault])
 }
 
 model Upload {

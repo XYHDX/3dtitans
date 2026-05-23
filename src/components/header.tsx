@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from './ui/sheet';
-import { Menu, ShoppingCart, LogOut, LayoutDashboard, ClipboardList, Heart } from 'lucide-react';
+import { Menu, ShoppingCart, LogOut, LayoutDashboard, ClipboardList, Heart, MapPin } from 'lucide-react';
 import { Logo } from './logo';
 import { useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
@@ -114,6 +114,12 @@ export function Header() {
                 <Link href="/wishlist">
                   <Heart className="mr-2 h-4 w-4" />
                   My Wishlist
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/account/addresses">
+                  <MapPin className="mr-2 h-4 w-4" />
+                  Saved Addresses
                 </Link>
               </DropdownMenuItem>
             </>

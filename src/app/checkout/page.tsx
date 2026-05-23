@@ -18,7 +18,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useOrders } from '@/hooks/use-data';
+import { useAddresses } from '@/hooks/use-addresses';
 import { useTranslation } from '@/components/language-provider';
+import { MapPin } from 'lucide-react';
+import Link from 'next/link';
 
 type AddressFormData = {
   fullName: string;
@@ -61,12 +64,41 @@ export default function CheckoutPage() {
     resolver: zodResolver(addressSchema),
   });
 
+  // Saved addresses — pre-fill from default
+  const { addresses, defaultAddress, loading: addressesLoading } = useAddresses();
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('');
+
   useEffect(() => {
     if (user) {
-        setValue('fullName', user.displayName || '');
-        setValue('email', user.email || '');
+      setValue('fullName', user.displayName || '');
+      setValue('email', user.email || '');
     }
   }, [user, setValue]);
+
+  // When saved addresses load, auto-pick the default and pre-fill the form
+  useEffect(() => {
+    if (!defaultAddress || selectedAddressId) return;
+    setSelectedAddressId(defaultAddress.id);
+    setValue('fullName', defaultAddress.name);
+    setValue('phoneNumber', defaultAddress.phone || '');
+    setValue('addressLine1', [defaultAddress.line1, defaultAddress.line2].filter(Boolean).join(', '));
+    setValue('city', defaultAddress.city);
+    setValue('postalCode', defaultAddress.postalCode);
+    setValue('country', defaultAddress.country);
+  }, [defaultAddress, selectedAddressId, setValue]);
+
+  // User explicitly picks a different saved address
+  function pickAddress(id: string) {
+    setSelectedAddressId(id);
+    const a = addresses.find((x) => x.id === id);
+    if (!a) return;
+    setValue('fullName', a.name);
+    setValue('phoneNumber', a.phone || '');
+    setValue('addressLine1', [a.line1, a.line2].filter(Boolean).join(', '));
+    setValue('city', a.city);
+    setValue('postalCode', a.postalCode);
+    setValue('country', a.country);
+  }
 
   const handlePlaceOrder = async (addressData: AddressFormData) => {
     if (cart.length === 0) {
@@ -186,6 +218,52 @@ export default function CheckoutPage() {
               <CardDescription>{t('checkout.formSubtitle')}</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Saved-address picker — appears for logged-in users with at least one address.
+                  Selecting an entry pre-fills the form below. New addresses are saved on
+                  /account/addresses (linked at the bottom). */}
+              {user && addresses.length > 0 && (
+                <div className="mb-6 border-[3px] border-foreground bg-card p-4 shadow-[4px_4px_0_0_hsl(var(--foreground))] dark:shadow-[4px_4px_0_0_hsl(var(--accent))]">
+                  <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      <span className="font-headline text-xs uppercase tracking-wider">Use saved address</span>
+                    </div>
+                    <Link href="/account/addresses" className="text-xs underline hover:text-accent-foreground hover:bg-accent px-1">
+                      Manage addresses
+                    </Link>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {addresses.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => pickAddress(a.id)}
+                        className={`text-left border-[2px] border-foreground p-3 text-xs transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[2px_2px_0_0_hsl(var(--foreground))] ${
+                          selectedAddressId === a.id ? 'bg-accent text-accent-foreground' : 'bg-background'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          {a.label && <span className="font-headline text-[10px]">{a.label}</span>}
+                          {a.isDefault && <span className="font-headline text-[10px] bg-foreground text-background px-1">DEFAULT</span>}
+                        </div>
+                        <div className="font-bold">{a.name}</div>
+                        <div className="text-muted-foreground">
+                          {a.line1}, {a.city}, {a.postalCode}, {a.country}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-3">
+                    Need to change something? Edit the fields below — your saved address won't change.
+                  </p>
+                </div>
+              )}
+              {user && addresses.length === 0 && !addressesLoading && (
+                <p className="text-xs text-muted-foreground mb-4">
+                  Tip: <Link href="/account/addresses" className="underline">save this address</Link> for one-click checkout next time.
+                </p>
+              )}
+
               <form id="shipping-form" onSubmit={handleSubmit(handlePlaceOrder)} className="grid gap-4">
                  <div className="grid gap-2">
                     <Label htmlFor="fullName">{t('checkout.labels.fullName')}</Label>
