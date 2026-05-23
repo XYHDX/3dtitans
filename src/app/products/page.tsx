@@ -1,6 +1,7 @@
 
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ProductCard } from '@/components/product-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,17 @@ import { useTranslation } from '@/components/language-provider';
 export default function ProductsPage() {
   const { data: products, loading } = useProducts();
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
+  const searchParams = useSearchParams();
+  // Accept ?q= from the SiteSearch's "See all results" deep link
+  const [query, setQuery] = useState(() => searchParams.get('q') || '');
+
+  // Keep state in sync if the URL changes (back/forward, new search from header)
+  useEffect(() => {
+    const urlQ = searchParams.get('q') || '';
+    if (urlQ !== query) setQuery(urlQ);
+    // We intentionally only re-sync when the URL changes, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -20,7 +31,9 @@ export default function ProductsPage() {
     return (products || []).filter((p) => {
       const name = p.name?.toLowerCase() || '';
       const category = p.category?.toLowerCase() || '';
-      return name.includes(term) || category.includes(term);
+      const description = p.description?.toLowerCase() || '';
+      const tags = Array.isArray(p.tags) ? p.tags.join(' ').toLowerCase() : '';
+      return name.includes(term) || category.includes(term) || description.includes(term) || tags.includes(term);
     });
   }, [products, query]);
 

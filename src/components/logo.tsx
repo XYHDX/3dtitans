@@ -22,7 +22,7 @@ type LogoProps = HTMLAttributes<HTMLDivElement> & {
  * The SVG sources live in /public/logo-3d-titans*.svg and are generated from
  * scripts/make_logos.py (in repo root or kept alongside design tokens).
  */
-export function Logo({ className, width = 180, height = 60, variant = 'lockup', ...rest }: LogoProps) {
+export function Logo({ className, width = 200, height = 44, variant = 'lockup', ...rest }: LogoProps) {
   // Cube-only mark — theme-aware swap.
   if (variant === 'cube') {
     return (

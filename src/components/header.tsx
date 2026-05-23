@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from './language-provider';
 import { LanguageToggle } from './language-toggle';
 import { ThemeToggle } from './theme-toggle';
+import { SiteSearch } from './site-search';
 import { cn } from '@/lib/utils';
 
 export function Header() {
@@ -158,7 +159,7 @@ export function Header() {
                 <SheetTitle className="sr-only">Menu</SheetTitle>
               </SheetHeader>
               <Link href="/" className="mb-8 inline-flex items-center" onClick={() => setSheetOpen(false)}>
-                <Logo width={180} height={60} />
+                <Logo width={200} height={44} />
               </Link>
               <nav className="flex flex-col gap-6">
                 {navLinks.map((link) => (
@@ -195,28 +196,20 @@ export function Header() {
               isRTL ? 'ml-4' : 'mr-4'
             )}
           >
-            <Logo width={180} height={60} />
+            <Logo width={200} height={44} />
           </Link>
         </div>
 
-        {/* Desktop Nav / Mobile Logo */}
-        <div className="flex flex-1 justify-center md:justify-center order-2">
+        {/* Desktop Search / Mobile Logo */}
+        <div className="flex flex-1 justify-center md:justify-center order-2 min-w-0 px-2">
           {/* Mobile Logo */}
           <Link href="/" className="flex items-center md:hidden">
-            <Logo width={150} height={50} />
+            <Logo width={160} height={36} />
           </Link>
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wide">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="border-[2px] border-transparent px-3 py-1 hover:border-foreground hover:bg-accent hover:text-accent-foreground transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-[2px_2px_0_0_hsl(var(--foreground))]"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+          {/* Desktop Search bar — centered between logo and auth */}
+          <div className="hidden md:flex flex-1 max-w-md justify-center">
+            <SiteSearch className="w-full" />
+          </div>
         </div>
 
         {/* Auth Buttons */}
@@ -230,6 +223,23 @@ export function Header() {
         </div>
 
         <CartSheet open={isCartOpen} onOpenChange={setCartOpen} />
+      </div>
+
+      {/* Secondary nav row — visible on desktop only (mobile uses the sheet menu) */}
+      <div className="hidden md:block border-t-[2px] border-foreground bg-background">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <nav className="flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wide">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="border-[2px] border-transparent px-3 py-1 hover:border-foreground hover:bg-accent hover:text-accent-foreground transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-[2px_2px_0_0_hsl(var(--foreground))]"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
     </header>
   );
