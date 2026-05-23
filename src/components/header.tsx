@@ -187,15 +187,37 @@ export function Header() {
                   </Link>
                 ))}
               </nav>
-              <div className="mt-6 flex flex-col gap-3">
+
+              {/* Authenticated quick links */}
+              {user && user.role !== 'store-owner' && (
+                <nav className="flex flex-col gap-4 mt-6 pt-6 border-t-[2px] border-foreground/20 text-sm">
+                  <Link href="/orders" onClick={() => setSheetOpen(false)} className="flex items-center gap-2 hover:text-accent-foreground hover:bg-accent px-1 py-1">
+                    <ClipboardList className="h-4 w-4" /> My Orders
+                  </Link>
+                  <Link href="/wishlist" onClick={() => setSheetOpen(false)} className="flex items-center gap-2 hover:text-accent-foreground hover:bg-accent px-1 py-1">
+                    <Heart className="h-4 w-4" /> My Wishlist
+                  </Link>
+                  <Link href="/account/addresses" onClick={() => setSheetOpen(false)} className="flex items-center gap-2 hover:text-accent-foreground hover:bg-accent px-1 py-1">
+                    <MapPin className="h-4 w-4" /> Saved Addresses
+                  </Link>
+                </nav>
+              )}
+
+              <div className="mt-6 flex flex-col gap-3 pt-6 border-t-[2px] border-foreground/20">
                 {!user && (
                   <Button asChild className="w-full">
-                    <Link href="/login">
+                    <Link href="/login" onClick={() => setSheetOpen(false)}>
                       {t('nav.login')} / {t('nav.signup')}
                     </Link>
                   </Button>
                 )}
-                <div className="mt-2">
+                {/* Theme toggle — lives in the sheet for mobile users */}
+                <div className="flex items-center justify-between gap-3 mt-2">
+                  <span className="text-xs font-headline uppercase tracking-wider">Theme</span>
+                  <ThemeToggle />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-headline uppercase tracking-wider">Language</span>
                   <LanguageToggle />
                 </div>
               </div>

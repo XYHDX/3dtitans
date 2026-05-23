@@ -132,8 +132,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
             >
-              <div className="absolute inset-3 sm:inset-6 rounded-xl border bg-black/70" />
-              <div className="absolute inset-4 sm:inset-7 rounded-xl overflow-hidden">
+              {/* Pixel-frame image stage — Recycled Tissue background to match brand */}
+              <div
+                className="absolute inset-3 sm:inset-6 border-[3px] border-foreground"
+                style={{ background: 'hsl(var(--recycled-tissue))' }}
+              />
+              <div className="absolute inset-4 sm:inset-7 overflow-hidden">
                 <Image
                   src={activeImage || product.imageUrl}
                   alt={product.name}
@@ -142,50 +146,64 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                   data-ai-hint={product.imageHint}
                 />
               </div>
-              <Badge variant="secondary" className="absolute top-4 right-4 sm:top-6 sm:right-6">
+              <Badge variant="creator" className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
                 {product.uploaderName || product.uploaderEmail || 'Store'}
               </Badge>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute left-6 top-6 sm:left-8 sm:top-8 z-20 bg-background/80 hover:bg-background"
-                asChild
+
+              {/* Close — pixel-frame button, back to /products */}
+              <Link
+                href="/products"
+                aria-label={t('productDetail.close')}
+                className="absolute left-6 top-6 sm:left-8 sm:top-8 z-20 inline-flex h-10 w-10 items-center justify-center border-[3px] border-foreground bg-background text-foreground shadow-[3px_3px_0_0_hsl(var(--foreground))] transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:bg-accent hover:text-accent-foreground hover:shadow-[5px_5px_0_0_hsl(var(--foreground))] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
               >
-                <Link href="/products">
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">{t('productDetail.close')}</span>
-                </Link>
-              </Button>
+                <X className="h-5 w-5" />
+              </Link>
+
               {gallery.length > 1 && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute left-6 sm:left-8 top-1/2 -translate-y-1/2 z-20 bg-background/80 hover:bg-background"
+                  {/* Prev */}
+                  <button
+                    type="button"
                     onClick={goToPrev}
+                    aria-label="Previous image"
+                    className="absolute left-6 sm:left-8 top-1/2 -translate-y-1/2 z-20 inline-flex h-10 w-10 items-center justify-center border-[3px] border-foreground bg-background text-foreground shadow-[3px_3px_0_0_hsl(var(--foreground))] transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:bg-accent hover:text-accent-foreground hover:shadow-[5px_5px_0_0_hsl(var(--foreground))] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                   >
                     <ArrowLeft className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-6 sm:right-8 top-1/2 -translate-y-1/2 z-20 bg-background/80 hover:bg-background"
+                  </button>
+                  {/* Next */}
+                  <button
+                    type="button"
                     onClick={goToNext}
+                    aria-label="Next image"
+                    className="absolute right-6 sm:right-8 top-1/2 -translate-y-1/2 z-20 inline-flex h-10 w-10 items-center justify-center border-[3px] border-foreground bg-background text-foreground shadow-[3px_3px_0_0_hsl(var(--foreground))] transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:bg-accent hover:text-accent-foreground hover:shadow-[5px_5px_0_0_hsl(var(--foreground))] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                   >
                     <ArrowRight className="h-5 w-5" />
-                  </Button>
+                  </button>
+
+                  {/* Image counter */}
+                  <div className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 z-20 border-[2px] border-foreground bg-background px-2 py-1 font-headline text-[10px] tracking-wider">
+                    {gallery.findIndex((g) => g === activeImage) + 1} / {gallery.length}
+                  </div>
                 </>
               )}
             </div>
+
+            {/* Thumbnails — pixel-frame, active state inverts to Arcade Yellow */}
             {gallery.length > 1 && (
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 gap-3 mt-4 px-4">
                 {gallery.map((img) => (
                   <button
                     key={img}
+                    type="button"
                     onClick={() => setActiveImage(img)}
+                    aria-label="View image"
+                    aria-pressed={activeImage === img}
                     className={cn(
-                      'relative aspect-square rounded-md overflow-hidden border',
-                      activeImage === img ? 'border-primary ring-2 ring-primary/50' : 'border-muted'
+                      'relative aspect-square overflow-hidden border-[3px] border-foreground',
+                      'transition-transform [transition-timing-function:steps(2,end)] duration-75',
+                      activeImage === img
+                        ? 'shadow-[4px_4px_0_0_hsl(var(--accent))] ring-[3px] ring-accent ring-offset-2 ring-offset-background'
+                        : 'shadow-[3px_3px_0_0_hsl(var(--foreground))] hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_hsl(var(--foreground))]'
                     )}
                   >
                     <Image src={img} alt={product.name} fill className="object-cover" />
