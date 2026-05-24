@@ -41,7 +41,7 @@ function DeleteUploadAlert({ upload, onDelete }: { upload: Upload; onDelete: (id
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete upload"><Trash2 className="h-4 w-4" /></Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

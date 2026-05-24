@@ -35,7 +35,8 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ ok: true, updated: order.length });
   } catch (err: any) {
+    // Don't leak raw Prisma messages to the client; log server-side.
     console.error('admin/stores/reorder PATCH', err);
-    return NextResponse.json({ error: err?.message || 'Failed to reorder' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to reorder stores' }, { status: 500 });
   }
 }

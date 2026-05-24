@@ -294,7 +294,7 @@ function EditProductDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" aria-label={`Edit ${product.name}`}>
           <Edit className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -504,6 +504,7 @@ function DeleteProductAlert({
           variant="ghost"
           size="icon"
           className="text-destructive hover:text-destructive"
+          aria-label={`Delete ${product.name}`}
         >
           <Trash2 className="h-4 w-4" />
         </Button>

@@ -49,21 +49,23 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
                           className="h-6 w-6"
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
                           disabled={item.quantity <= 1}
+                          aria-label={`Decrease quantity of ${item.name}`}
                         >
                           -
                         </Button>
-                        <span className="w-6 text-center">{item.quantity}</span>
+                        <span className="w-6 text-center" aria-live="polite">{item.quantity}</span>
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-6 w-6"
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          aria-label={`Increase quantity of ${item.name}`}
                         >
                           +
                         </Button>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)}>
+                    <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} aria-label={`Remove ${item.name} from cart`}>
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </div>

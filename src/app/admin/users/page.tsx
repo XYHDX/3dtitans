@@ -76,7 +76,7 @@ function DeleteUserAlert({ userId, userName }: { userId: string, userName: strin
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isDeleting}>
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isDeleting} aria-label="Delete user">
           <Trash2 className="h-4 w-4" />
         </Button>
       </AlertDialogTrigger>

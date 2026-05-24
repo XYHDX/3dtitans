@@ -140,9 +140,10 @@ export async function GET() {
 
     return NextResponse.json({ orders: orders.map(mapOrder) });
   } catch (error: any) {
+    // Don't leak Prisma error codes or messages to the client — those can
+    // hint at schema layout. Log the real error, return a generic message.
     console.error('Orders GET failed', error);
-    const message = error?.message || 'Failed to load orders';
-    return NextResponse.json({ error: message, code: error?.code }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to load orders' }, { status: 500 });
   }
 }
 
@@ -365,8 +366,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ order: mapOrder(order) });
   } catch (error: any) {
+    // Log the full error server-side, return a generic message to the client.
     console.error('Orders POST failed', error);
-    const message = error?.message || 'Failed to create order';
-    return NextResponse.json({ error: message, code: error?.code }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
   }
 }

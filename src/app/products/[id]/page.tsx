@@ -275,11 +275,11 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
               <div className="flex flex-wrap items-center gap-4 justify-start sm:justify-end">
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => Math.max(1, q - 1))}>
+                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => Math.max(1, q - 1))} aria-label="Decrease quantity">
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="text-xl font-bold w-10 text-center">{quantity}</span>
-                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => q + 1)}>
+                  <span className="text-xl font-bold w-10 text-center" aria-live="polite" aria-label={`Quantity ${quantity}`}>{quantity}</span>
+                  <Button variant="outline" size="icon" onClick={() => setQuantity(q => q + 1)} aria-label="Increase quantity">
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>

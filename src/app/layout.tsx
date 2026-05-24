@@ -11,6 +11,14 @@ import { Footer } from '@/components/footer';
 import { MaintenanceScreen } from '@/components/maintenance-screen';
 import { AppProviders } from './providers';
 
+// Force the root layout to re-render on every request. Without this, Next
+// would cache the layout at build time and the maintenance flag toggle would
+// only take effect after a redeploy. This makes the maintenance check actually
+// work — admins can flip it on/off from /admin/settings and visitors see the
+// change immediately on next page load.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Brand v2 fonts — Press Start 2P for headlines, Space Mono for body.
 const pressStart = Press_Start_2P({
   weight: '400',
