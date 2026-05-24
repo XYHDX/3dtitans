@@ -21,8 +21,13 @@ export type PaymentSettings = {
   currencyLabel: string;
 };
 
+/**
+ * Defaults: nothing enabled (safe). The picker will show "no methods" if the
+ * fetch fails — pushes the user to surface the admin settings issue rather
+ * than silently allowing checkout with an unknown method.
+ */
 const DEFAULTS: PaymentSettings = {
-  codEnabled: true,
+  codEnabled: false,
   bankEnabled: false,
   shamCashEnabled: false,
   syriatelCashEnabled: false,
@@ -36,18 +41,23 @@ const DEFAULTS: PaymentSettings = {
   currencyLabel: 'USD',
 };
 
-let cached: PaymentSettings | null = null;
-
+/**
+ * Always fetches fresh on mount. No module-level cache — we used to cache
+ * across navigations, but that meant toggling a method in admin didn't
+ * affect the checkout page until a hard refresh. The /api/payments/settings
+ * endpoint is a single Postgres query and returns in ~30ms, so always-fresh
+ * is fine.
+ */
 export function usePaymentSettings() {
-  const [settings, setSettings] = useState<PaymentSettings>(cached || DEFAULTS);
-  const [loading, setLoading] = useState(!cached);
+  const [settings, setSettings] = useState<PaymentSettings>(DEFAULTS);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (cached) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/payments/settings');
+        // Cache-busting query param so any layer of intermediate caching is bypassed
+        const res = await fetch(`/api/payments/settings?_=${Date.now()}`, { cache: 'no-store' });
         const data = await res.json();
         const raw: Record<string, string> = data?.settings || {};
         const parsed: PaymentSettings = {
@@ -64,10 +74,9 @@ export function usePaymentSettings() {
           syriatelCashNumber:  raw['payment.syriatelCashNumber']  || '',
           currencyLabel:       raw['payment.currencyLabel']       || 'USD',
         };
-        cached = parsed;
         if (!cancelled) setSettings(parsed);
-      } catch {
-        // Keep defaults
+      } catch (err) {
+        console.error('Failed to load payment settings:', err);
       } finally {
         if (!cancelled) setLoading(false);
       }

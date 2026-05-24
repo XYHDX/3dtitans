@@ -3,6 +3,10 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+// Admin settings must always be fresh — no caching at any layer
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * Admin-only generic site-setting writer.
  *

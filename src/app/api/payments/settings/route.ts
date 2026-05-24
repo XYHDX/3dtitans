@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+// Force dynamic + no caching so admin toggles take effect immediately
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * GET /api/payments/settings — public payment configuration.
  *
@@ -15,7 +19,10 @@ export async function GET() {
     });
     const map: Record<string, string> = {};
     rows.forEach((r) => (map[r.key] = r.value));
-    return NextResponse.json({ settings: map });
+    return NextResponse.json(
+      { settings: map },
+      { headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } }
+    );
   } catch (err) {
     console.error('payments/settings GET', err);
     return NextResponse.json({ settings: {}, error: 'Failed to load settings' }, { status: 500 });
