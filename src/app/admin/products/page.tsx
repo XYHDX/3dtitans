@@ -504,7 +504,7 @@ function DeleteProductAlert({
           variant="ghost"
           size="icon"
           className="text-destructive hover:text-destructive"
-          aria-label={`Delete ${product.name}`}
+          aria-label={`Delete ${productName}`}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
