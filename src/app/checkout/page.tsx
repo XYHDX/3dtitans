@@ -145,19 +145,16 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // NOTE: assignee derivation is server-side only now. Clients have no
-      // business naming which admins handle their order — the server uses
-      // the cart's product uploaders. We also pass idempotencyKey so a
-      // double-click won't create two orders.
+      // SECURITY: we send ONLY {productId, quantity} per item. Prices, names,
+      // images, and totals are server-authoritative — the server fetches the
+      // current price from Postgres so a malicious client cannot edit the
+      // request body to pay $0.01 for a $99 product. Assignees are derived
+      // server-side too. Idempotency key prevents double-clicks creating dupes.
       const orderData = {
         items: cart.map((item) => ({
           productId: item.id,
-          name: item.name,
           quantity: item.quantity,
-          price: item.price,
-          imageUrl: item.imageUrl,
         })),
-        totalAmount: total,
         shippingAddress: {
           fullName: addressData.fullName,
           addressLine1: addressData.addressLine1,

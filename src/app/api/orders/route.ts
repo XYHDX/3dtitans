@@ -153,79 +153,126 @@ export async function POST(req: Request) {
     if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
     const body = await req.json();
-    // NOTE: `assignedAdminIds` deliberately not destructured. Assignees are derived
-    // server-side from product uploaders — clients have no business naming admins.
-    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, isPrioritized, notes, paymentMethod, idempotencyKey } = body;
+    // Client sends ONLY {productId, quantity} per item + idempotencyKey + shipping
+    // info. Everything else (price, name, image, total, assignees) is server-derived
+    // from the database. Never trust the client with prices.
+    const { items, shippingAddress, phoneNumber, customerEmail, isPrioritized, notes, paymentMethod, idempotencyKey } = body;
 
-    // Idempotency — if this key was already used, return the existing order.
-    // Stops duplicate orders from double-clicks, network retries, browser back/forward.
-    if (typeof idempotencyKey === 'string' && idempotencyKey.length >= 8) {
-      try {
-        const existing = await prisma.order.findUnique({
-          where: { idempotencyKey } as any,
-          include: { items: true, assignments: true },
-        });
-        if (existing) {
-          // Only the original placer (or matching email) can claim the duplicate.
-          // Different user with the same key (effectively impossible with UUIDs)
-          // → treat as conflict, never leak someone else's order.
-          const sameUser =
-            (!!user?.id && existing.userId === user.id) ||
-            (!!user?.email && !!existing.customerEmail &&
-              existing.customerEmail.toLowerCase() === user.email.toLowerCase());
-          if (sameUser) {
-            return NextResponse.json({ order: mapOrder(existing) });
-          }
-          return NextResponse.json({ error: 'Idempotency key conflict' }, { status: 409 });
-        }
-      } catch (e) {
-        // Pre-migration databases won't have the column yet — fall through and
-        // create the order without idempotency protection. Logs the issue so
-        // the admin knows the Phase 6 migration is pending.
-        console.warn('Idempotency lookup failed (run phase6 migration?):', (e as Error).message);
-      }
+    // -------------------------------------------------------------------
+    // 1. IDEMPOTENCY KEY — strictly required. No fallback, no exceptions.
+    //    Without one, double-clicks and network retries create duplicates,
+    //    which is a real money/inventory problem. The Phase 6 migration is
+    //    a hard prerequisite for placing orders.
+    // -------------------------------------------------------------------
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+      return NextResponse.json(
+        { error: 'Missing or invalid idempotency key. Refresh the checkout page and try again.' },
+        { status: 400 }
+      );
     }
 
-    // Validate payment method (Phase 4)
+    try {
+      const existing = await prisma.order.findUnique({
+        where: { idempotencyKey } as any,
+        include: { items: true, assignments: true },
+      });
+      if (existing) {
+        // Only the original placer (or matching email) can claim the duplicate.
+        // Different user with the same key (effectively impossible with UUIDs)
+        // → conflict, never leak someone else's order.
+        const sameUser =
+          (!!user?.id && existing.userId === user.id) ||
+          (!!user?.email && !!existing.customerEmail &&
+            existing.customerEmail.toLowerCase() === user.email.toLowerCase());
+        if (sameUser) {
+          return NextResponse.json({ order: mapOrder(existing) });
+        }
+        return NextResponse.json({ error: 'Idempotency key conflict' }, { status: 409 });
+      }
+    } catch (e: any) {
+      // Most likely the Phase 6 migration hasn't been applied yet.
+      console.error('Idempotency lookup failed — Phase 6 migration may be missing:', e?.message);
+      return NextResponse.json(
+        { error: 'Order system not initialized. Admin: apply the Phase 6 SQL migration.' },
+        { status: 503 }
+      );
+    }
+
+    // -------------------------------------------------------------------
+    // 2. Other basic validations
+    // -------------------------------------------------------------------
     const validMethods = ['cod', 'bank_transfer', 'sham_cash', 'syriatel_cash', 'stripe'];
     if (paymentMethod && !validMethods.includes(paymentMethod)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
     }
-
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Items are required' }, { status: 400 });
-    }
-    const total = Number(totalAmount);
-    if (Number.isNaN(total)) {
-      return NextResponse.json({ error: 'Total amount is required' }, { status: 400 });
     }
     if (!shippingAddress?.fullName || !shippingAddress?.addressLine1 || !shippingAddress?.city || !shippingAddress?.postalCode || !shippingAddress?.country) {
       return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
     }
 
-    // Server-side derivation of assignees — entirely from the cart's product
-    // uploaders. The client doesn't get a say (previously sent `assignedAdminIds`
-    // which is a security smell — let users target arbitrary admins).
-    const productIds = items.map((item: any) => item.productId).filter(Boolean);
-    let assignees: string[] = [];
-    try {
-      const products = productIds.length
-        ? await prisma.product.findMany({
-            where: { id: { in: productIds } },
-            select: { id: true, uploaderId: true },
-          })
-        : [];
-      assignees = Array.from(
-        new Set(
-          products
-            .map((p) => p.uploaderId)
-            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-        )
-      );
-    } catch (lookupError) {
-      console.error('Order assignee lookup failed', lookupError);
+    // -------------------------------------------------------------------
+    // 3. AUTHORITATIVE PRICING — fetch every product from the database.
+    //    The client provided only {productId, quantity}. We ignore any
+    //    `price`, `name`, or `imageUrl` from the request body so a malicious
+    //    client cannot pay $0.01 for a $99 product.
+    // -------------------------------------------------------------------
+    const requestedIds: string[] = items
+      .map((it: any) => String(it?.productId || ''))
+      .filter((id: string) => id.length > 0);
+
+    if (requestedIds.length === 0) {
+      return NextResponse.json({ error: 'No valid product IDs in cart' }, { status: 400 });
     }
 
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: requestedIds } },
+      select: { id: true, name: true, price: true, imageUrl: true, uploaderId: true },
+    });
+    const productById = new Map(dbProducts.map((p) => [p.id, p]));
+
+    // Reject if any cart item references a product that no longer exists
+    const missingIds = requestedIds.filter((id) => !productById.has(id));
+    if (missingIds.length > 0) {
+      return NextResponse.json(
+        { error: 'Some items in your cart are no longer available', missingIds },
+        { status: 400 }
+      );
+    }
+
+    // Build authoritative line items — server's price wins, quantity is clamped
+    type LineItem = { productId: string; name: string; quantity: number; price: number; imageUrl: string };
+    const lineItems: LineItem[] = items
+      .map((it: any) => {
+        const product = productById.get(String(it.productId))!;
+        const rawQty = Number(it?.quantity);
+        const quantity = Math.max(1, Math.min(99, Number.isFinite(rawQty) ? Math.floor(rawQty) : 1));
+        return {
+          productId: product.id,
+          name: product.name,
+          quantity,
+          price: Number(product.price),
+          imageUrl: product.imageUrl || '',
+        };
+      });
+
+    // Server computes the total — client never sends one
+    const computedTotal = lineItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
+    if (!Number.isFinite(computedTotal) || computedTotal <= 0) {
+      return NextResponse.json({ error: 'Computed order total is invalid' }, { status: 400 });
+    }
+
+    // -------------------------------------------------------------------
+    // 4. Assignees — derived from the SAME product set we just validated.
+    // -------------------------------------------------------------------
+    const assignees = Array.from(
+      new Set(
+        dbProducts
+          .map((p) => p.uploaderId)
+          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      )
+    );
     if (!assignees.length) {
       return NextResponse.json(
         { error: 'Order cannot be created because products are missing uploader assignments.' },
@@ -246,7 +293,7 @@ export async function POST(req: Request) {
     const orderData: any = {
       userId,
       status: 'AwaitingAcceptance',
-      totalAmount: total,
+      totalAmount: computedTotal,    // ← server-computed, NOT from client body
       shippingName: shippingAddress.fullName,
       shippingAddress1: shippingAddress.addressLine1,
       shippingCity: shippingAddress.city,
@@ -258,18 +305,13 @@ export async function POST(req: Request) {
       notes: typeof notes === 'string' ? notes : '',
       paymentMethod: paymentMethod || 'cod',
       paymentStatus: 'pending',
-      // Idempotency — uniqueness enforced at DB level. If two simultaneous
-      // POSTs race in with the same key, the second create throws P2002 and
-      // we catch + return the winning order below.
-      ...(typeof idempotencyKey === 'string' && idempotencyKey.length >= 8
-        ? { idempotencyKey }
-        : {}),
+      idempotencyKey,                // required, validated above
       items: {
-        create: items.map((item: any) => ({
+        create: lineItems.map((item) => ({
           productId: item.productId,
           name: item.name,
           quantity: item.quantity,
-          price: item.price,
+          price: item.price,        // ← server's price from the DB
           imageUrl: item.imageUrl,
         })),
       },
