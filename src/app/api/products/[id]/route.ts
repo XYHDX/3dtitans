@@ -26,7 +26,8 @@ function mapProduct(product: any) {
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
-    uploaderEmail: product.uploaderEmail || product.uploader?.email || '',
+    // uploaderEmail intentionally omitted from public responses — PII leak.
+    // Admin endpoints inject it explicitly when needed (see products POST).
     storeId: product.storeId || null,
     storeName: product.store?.name,
     storeSlug: product.store?.slug,
@@ -88,7 +89,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        // Public response — no email field, that's PII for the uploader.
+        uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
         store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
       },
     });
@@ -100,7 +102,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     console.error('Product GET failed (priority include)', error);
     const fallback = await prisma.product.findUnique({
       where: { id },
-      include: { uploader: { select: { id: true, name: true, email: true } }, store: { select: { id: true, name: true, slug: true, avatarUrl: true } } },
+      include: {
+        uploader: { select: { id: true, name: true } },
+        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+      },
     });
     if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const prioritizedIds = await getPrioritizedIds();

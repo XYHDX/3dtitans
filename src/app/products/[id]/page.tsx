@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/hooks/use-cart';
 import { Badge } from '@/components/ui/badge';
-import { useProducts } from '@/hooks/use-data';
+import { useProduct } from '@/hooks/use-data';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useTranslation } from '@/components/language-provider';
@@ -21,7 +21,11 @@ import { ProductReviews } from '@/components/product-reviews';
 // eslint-disable-next-line
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
-  const { data: products, loading } = useProducts();
+  // SECURITY: fetch ONLY the product being viewed. Previously this used
+  // useProducts() which downloaded the entire catalog and filtered client-side
+  // — leaking uploader IDs, prices, descriptions, and store info for every
+  // product to anyone who clicked a single product card.
+  const { data: product, loading } = useProduct(id);
   const { toast } = useToast();
   const { addToCart, getItemQuantity } = useCart();
   const { t } = useTranslation();
@@ -35,7 +39,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const [quantity, setQuantity] = useState(1);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
-  const product = products?.find((p) => p.id === id) || null;
+  // `product` already comes from useProduct(id) above — no client-side filter needed.
   const gallery = useMemo(
     () =>
       (product?.imageGallery && product.imageGallery.length > 0)

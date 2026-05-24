@@ -25,7 +25,8 @@ function mapProduct(product: any) {
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
-    uploaderEmail: product.uploaderEmail || product.uploader?.email || '',
+    // uploaderEmail intentionally omitted from public mapping — PII leak.
+    // Admin endpoints inject it explicitly via `{ ...product, uploaderEmail: user.email }`.
     storeId: product.storeId || null,
     storeName: product.store?.name,
     storeSlug: product.store?.slug,
@@ -107,7 +108,8 @@ export async function GET(req: Request) {
         { createdAt: 'desc' },
       ],
       include: {
-        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
+        // Public list — no email field. Uploader names only.
+        uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
         store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
       },
     });
@@ -131,7 +133,8 @@ export async function GET(req: Request) {
         where,
         orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
         include: {
-          uploader: { select: { id: true, name: true, email: true } },
+          // Public list — no email field. Uploader names only.
+          uploader: { select: { id: true, name: true } },
           store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
         },
       });

@@ -102,6 +102,52 @@ export function useProducts(filter?: { uploaderId?: string; storeId?: string; st
   return { data, loading, refresh, addProduct, updateProduct, deleteProduct };
 }
 
+/**
+ * Fetch a single product by id from /api/products/[id].
+ *
+ * Use this on product detail pages instead of useProducts() — pulling the full
+ * catalog just to find one row leaks every product's data (uploader IDs, prices,
+ * descriptions, store info) to anyone who clicks any product card.
+ */
+export function useProduct(id: string | undefined | null) {
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!id);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!id) {
+      setProduct(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/products/${encodeURIComponent(id)}`);
+      if (res.status === 404) {
+        setProduct(null);
+        setError('not_found');
+        return;
+      }
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setProduct(data.product || null);
+    } catch (e: any) {
+      setProduct(null);
+      setError(e?.message || 'failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { data: product, loading, error, refresh };
+}
+
 // Stores
 export function useStores(filter?: { ownerId?: string; includeUnpublished?: boolean }, options?: { skipFetch?: boolean }) {
   const [stores, setStores] = useState<Store[]>([]);
