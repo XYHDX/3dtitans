@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSessionUser } from '@/hooks/use-session';
-import { useProducts, useOrders } from '@/hooks/use-data';
+import { useOrders } from '@/hooks/use-data';
 import { useAddresses } from '@/hooks/use-addresses';
 import { useTranslation } from '@/components/language-provider';
 import { MapPin } from 'lucide-react';
@@ -39,7 +39,6 @@ type AddressFormData = {
 export default function CheckoutPage() {
   const { cart, clearCart, total } = useCart();
   const { user } = useSessionUser();
-  const { data: products } = useProducts();
   const { createOrder } = useOrders(undefined, { skipFetch: true });
   const { toast } = useToast();
   const router = useRouter();
@@ -71,6 +70,26 @@ export default function CheckoutPage() {
 
   // Payment method (Phase 4)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+
+  // Idempotency key (Phase 6) — fetched once per checkout visit. Sent with the
+  // POST so accidental double-clicks / network retries return the existing
+  // order instead of creating duplicates. Re-fetched on full navigation to /checkout.
+  const [idempotencyKey, setIdempotencyKey] = useState<string>('');
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/orders/idempotency-key', { cache: 'no-store' });
+        const data = await res.json();
+        if (!cancelled && data?.idempotencyKey) setIdempotencyKey(data.idempotencyKey);
+      } catch {
+        // Fall back silently — if the fetch fails, the order will just be
+        // non-idempotent for this session, no worse than before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -126,20 +145,12 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      const userId = user.id || user.uid;
-      const productUploaders =
-        cart
-          .map((item) => products?.find((p) => p.id === item.id)?.uploaderId)
-          .filter(Boolean) as string[];
-      const assignedAdminIds = Array.from(new Set(productUploaders));
-
-      if (assignedAdminIds.length === 0) {
-         throw new Error(`No owner information found for the products in the cart.`);
-      }
-
+      // NOTE: assignee derivation is server-side only now. Clients have no
+      // business naming which admins handle their order — the server uses
+      // the cart's product uploaders. We also pass idempotencyKey so a
+      // double-click won't create two orders.
       const orderData = {
-        userId: userId,
-        items: cart.map(item => ({
+        items: cart.map((item) => ({
           productId: item.id,
           name: item.name,
           quantity: item.quantity,
@@ -156,10 +167,10 @@ export default function CheckoutPage() {
         },
         phoneNumber: addressData.phoneNumber,
         customerEmail: addressData.email,
-        assignedAdminIds: assignedAdminIds,
         isPrioritized: false,
         notes: addressData.notes || '',
         paymentMethod,
+        idempotencyKey,
       };
 
       const result = await createOrder(orderData as any);

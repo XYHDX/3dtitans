@@ -181,6 +181,11 @@ model Order {
   paymentProofUrl    String?   // uploaded screenshot for wallet payments
   paidAt             DateTime?
 
+  // Idempotency — prevents duplicate orders from double-clicks / network retries.
+  // Client fetches a fresh key on /checkout mount, sends with POST. Server returns
+  // existing order if the key was already used instead of creating a new one.
+  idempotencyKey     String?   @unique
+
   user   User?   @relation("UserOrders", fields: [userId], references: [id])
   userId String?
 

@@ -153,7 +153,38 @@ export async function POST(req: Request) {
     if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
     const body = await req.json();
-    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, assignedAdminIds, isPrioritized, notes, paymentMethod } = body;
+    // NOTE: `assignedAdminIds` deliberately not destructured. Assignees are derived
+    // server-side from product uploaders — clients have no business naming admins.
+    const { items, totalAmount, shippingAddress, phoneNumber, customerEmail, isPrioritized, notes, paymentMethod, idempotencyKey } = body;
+
+    // Idempotency — if this key was already used, return the existing order.
+    // Stops duplicate orders from double-clicks, network retries, browser back/forward.
+    if (typeof idempotencyKey === 'string' && idempotencyKey.length >= 8) {
+      try {
+        const existing = await prisma.order.findUnique({
+          where: { idempotencyKey } as any,
+          include: { items: true, assignments: true },
+        });
+        if (existing) {
+          // Only the original placer (or matching email) can claim the duplicate.
+          // Different user with the same key (effectively impossible with UUIDs)
+          // → treat as conflict, never leak someone else's order.
+          const sameUser =
+            (!!user?.id && existing.userId === user.id) ||
+            (!!user?.email && !!existing.customerEmail &&
+              existing.customerEmail.toLowerCase() === user.email.toLowerCase());
+          if (sameUser) {
+            return NextResponse.json({ order: mapOrder(existing) });
+          }
+          return NextResponse.json({ error: 'Idempotency key conflict' }, { status: 409 });
+        }
+      } catch (e) {
+        // Pre-migration databases won't have the column yet — fall through and
+        // create the order without idempotency protection. Logs the issue so
+        // the admin knows the Phase 6 migration is pending.
+        console.warn('Idempotency lookup failed (run phase6 migration?):', (e as Error).message);
+      }
+    }
 
     // Validate payment method (Phase 4)
     const validMethods = ['cod', 'bank_transfer', 'sham_cash', 'syriatel_cash', 'stripe'];
@@ -172,35 +203,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
     }
 
+    // Server-side derivation of assignees — entirely from the cart's product
+    // uploaders. The client doesn't get a say (previously sent `assignedAdminIds`
+    // which is a security smell — let users target arbitrary admins).
     const productIds = items.map((item: any) => item.productId).filter(Boolean);
-    let uploaderIds: string[] = [];
+    let assignees: string[] = [];
     try {
-      uploaderIds = productIds.length
-        ? Array.from(
-            new Set(
-              (
-                await prisma.product.findMany({
-                  where: { id: { in: productIds } },
-                  select: { id: true, uploaderId: true },
-                })
-              )
-                .map((p) => p.uploaderId)
-                .filter(Boolean)
-            )
-          )
+      const products = productIds.length
+        ? await prisma.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true, uploaderId: true },
+          })
         : [];
+      assignees = Array.from(
+        new Set(
+          products
+            .map((p) => p.uploaderId)
+            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        )
+      );
     } catch (lookupError) {
       console.error('Order assignee lookup failed', lookupError);
     }
 
-    const preferredAssignees = Array.isArray(assignedAdminIds) ? assignedAdminIds : [];
-    const initialAssignees = preferredAssignees.length > 0 ? preferredAssignees : uploaderIds;
-    const assignees = Array.from(
-      new Set((initialAssignees || []).filter((id) => typeof id === 'string' && id.trim().length > 0))
-    );
-
     if (!assignees.length) {
-      return NextResponse.json({ error: 'Order cannot be created because products are missing uploader assignments.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Order cannot be created because products are missing uploader assignments.' },
+        { status: 400 }
+      );
     }
 
     let userId: string | undefined;
@@ -213,7 +243,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const orderData = {
+    const orderData: any = {
       userId,
       status: 'AwaitingAcceptance',
       totalAmount: total,
@@ -228,6 +258,12 @@ export async function POST(req: Request) {
       notes: typeof notes === 'string' ? notes : '',
       paymentMethod: paymentMethod || 'cod',
       paymentStatus: 'pending',
+      // Idempotency — uniqueness enforced at DB level. If two simultaneous
+      // POSTs race in with the same key, the second create throws P2002 and
+      // we catch + return the winning order below.
+      ...(typeof idempotencyKey === 'string' && idempotencyKey.length >= 8
+        ? { idempotencyKey }
+        : {}),
       items: {
         create: items.map((item: any) => ({
           productId: item.productId,
@@ -253,6 +289,17 @@ export async function POST(req: Request) {
         include: { items: true, assignments: true },
       });
     } catch (error: any) {
+      // Idempotency race: two simultaneous POSTs with the same key. The DB's
+      // unique constraint rejects the loser with P2002. Fetch the winning
+      // order (which arrived a microsecond earlier) and return it.
+      if (error?.code === 'P2002' && orderData.idempotencyKey) {
+        const winner = await prisma.order.findUnique({
+          where: { idempotencyKey: orderData.idempotencyKey } as any,
+          include: { items: true, assignments: true },
+        });
+        if (winner) return NextResponse.json({ order: mapOrder(winner) });
+        throw error;
+      }
       if (error?.code === 'P2022') {
         const ensured = await ensureOrderNotesColumn();
         if (ensured) {
