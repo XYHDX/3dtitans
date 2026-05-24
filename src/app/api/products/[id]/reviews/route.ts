@@ -44,18 +44,26 @@ export async function POST(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
 
-    const productId = params.id;
-    const body = await req.json().catch(() => ({}));
-    const rating = Number(body.rating);
-    const title = typeof body.title === 'string' ? body.title.trim().slice(0, 120) : '';
-    const reviewBody = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : '';
-
-    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
-      return NextResponse.json({ error: 'Rating must be 1–5' }, { status: 400 });
+    const productId = (params.id || '').trim();
+    if (productId.length < 8 || productId.length > 64) {
+      return NextResponse.json({ error: 'Invalid productId' }, { status: 400 });
     }
 
-    // Verify the product exists
-    const product = await prisma.product.findUnique({ where: { id: productId } });
+    const body = await req.json().catch(() => ({}));
+    const rawRating = Number(body?.rating);
+    if (!Number.isFinite(rawRating) || rawRating < 1 || rawRating > 5) {
+      return NextResponse.json({ error: 'Rating must be an integer between 1 and 5' }, { status: 400 });
+    }
+    // DB CHECK constraint requires integer 1–5; floor any decimal input
+    const rating = Math.floor(rawRating);
+    const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 120) : '';
+    const reviewBody = typeof body?.body === 'string' ? body.body.trim().slice(0, 4000) : '';
+
+    // Verify the product exists — pre-validates the FK so we return 404 not 500
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true },
+    });
     if (!product) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
@@ -104,8 +112,13 @@ export async function POST(req: Request, { params }: Ctx) {
 
     return NextResponse.json({ review: mapReview({ ...upserted, user: session.user }) });
   } catch (err: any) {
+    // Race condition: product or user deleted between the existence-check and the upsert.
+    if (err?.code === 'P2003') {
+      return NextResponse.json({ error: 'Product or user no longer exists' }, { status: 404 });
+    }
     console.error('reviews POST', err);
-    return NextResponse.json({ error: err?.message || 'Failed to save review' }, { status: 500 });
+    // Don't leak raw err.message — could surface SQL state or stack info to the client.
+    return NextResponse.json({ error: 'Failed to save review' }, { status: 500 });
   }
 }
 

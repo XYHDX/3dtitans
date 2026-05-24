@@ -3,6 +3,14 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+/** Validate productId is a real string within the expected length range. */
+function sanitizeProductId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed.length < 8 || trimmed.length > 64) return null;
+  return trimmed;
+}
+
 function mapCartRow(row: any) {
   const p = row.product || {};
   let gallery: string[] = [];
@@ -72,14 +80,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
     const body = await req.json().catch(() => ({}));
-    const productId = String(body.productId || '');
-    const quantity = Math.max(1, Math.min(99, Number(body.quantity ?? 1) || 1));
-    const mode = body.mode === 'set' ? 'set' : 'add';
+    const productId = sanitizeProductId(body?.productId);
     if (!productId) {
-      return NextResponse.json({ error: 'productId required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'productId must be a non-empty string between 8 and 64 characters' },
+        { status: 400 }
+      );
     }
+    const rawQty = Number(body?.quantity ?? 1);
+    const quantity = Math.max(1, Math.min(99, Number.isFinite(rawQty) ? Math.floor(rawQty) : 1));
+    const mode = body?.mode === 'set' ? 'set' : 'add';
 
-    // Verify product exists (avoid FK errors)
+    // Verify product exists (avoid FK errors → 500)
     const exists = await prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
     if (!exists) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
@@ -103,8 +115,12 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (err: any) {
+    // Race condition: product was deleted between findUnique and upsert → FK fails.
+    if (err?.code === 'P2003') {
+      return NextResponse.json({ error: 'Product no longer exists' }, { status: 404 });
+    }
     console.error('cart POST', err);
-    return NextResponse.json({ error: err?.message || 'Failed to update cart' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update cart' }, { status: 500 });
   }
 }
 
@@ -120,13 +136,17 @@ export async function DELETE(req: Request) {
       await prisma.cartItem.deleteMany({ where: { userId: session.user.id } });
       return NextResponse.json({ ok: true });
     }
-    const productId = searchParams.get('productId');
+    const productId = sanitizeProductId(searchParams.get('productId'));
     if (!productId) {
-      return NextResponse.json({ error: 'productId required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'productId must be a non-empty string between 8 and 64 characters' },
+        { status: 400 }
+      );
     }
-    await prisma.cartItem.delete({
-      where: { userId_productId: { userId: session.user.id, productId } },
-    }).catch(() => null);
+    // Idempotent — fine if the row doesn't exist
+    await prisma.cartItem
+      .delete({ where: { userId_productId: { userId: session.user.id, productId } } })
+      .catch(() => null);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('cart DELETE', err);

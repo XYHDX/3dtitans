@@ -3,6 +3,18 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+/**
+ * Validates that an arbitrary value from a request body is a usable productId.
+ * Returns the trimmed string if OK, or null if it's anything we don't trust.
+ */
+function sanitizeProductId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  // cuid()s are around 25 chars; uuid v4 is 36; accept anything in a sane range
+  if (trimmed.length < 8 || trimmed.length > 64) return null;
+  return trimmed;
+}
+
 /** GET /api/wishlist — returns the current user's wishlisted products */
 export async function GET() {
   try {
@@ -53,12 +65,28 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
-    const { productId } = await req.json();
+
+    const body = await req.json().catch(() => ({}));
+    const productId = sanitizeProductId(body?.productId);
     if (!productId) {
-      return NextResponse.json({ error: 'productId required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'productId must be a non-empty string between 8 and 64 characters' },
+        { status: 400 }
+      );
     }
 
-    // Toggle: try delete; if no row deleted, insert it.
+    // Verify the product actually exists before we attempt any FK-bound write.
+    // Without this, a manipulated productId would hit Prisma's foreign-key
+    // constraint and bubble up as a 500 instead of the proper 400/404.
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true },
+    });
+    if (!product) {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    }
+
+    // Toggle: try delete; if no row existed, insert.
     const existing = await prisma.wishlistItem.findUnique({
       where: { userId_productId: { userId: session.user.id, productId } },
     });
@@ -73,8 +101,13 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ wishlisted: true });
   } catch (err: any) {
+    // FK violation (P2003) shouldn't happen now because we pre-verify the product,
+    // but defensively map it to 404 if it ever fires (e.g. product deleted in a race).
+    if (err?.code === 'P2003') {
+      return NextResponse.json({ error: 'Product no longer exists' }, { status: 404 });
+    }
     console.error('wishlist POST', err);
-    return NextResponse.json({ error: err?.message || 'Failed to update wishlist' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update wishlist' }, { status: 500 });
   }
 }
 
@@ -86,13 +119,18 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
     const { searchParams } = new URL(req.url);
-    const productId = searchParams.get('productId');
+    const productId = sanitizeProductId(searchParams.get('productId'));
     if (!productId) {
-      return NextResponse.json({ error: 'productId required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'productId must be a non-empty string between 8 and 64 characters' },
+        { status: 400 }
+      );
     }
-    await prisma.wishlistItem.delete({
-      where: { userId_productId: { userId: session.user.id, productId } },
-    }).catch(() => null);
+    // Idempotent — remove if it exists, no error if not. We don't need to
+    // verify the product exists; removing a stale wishlist row is fine.
+    await prisma.wishlistItem
+      .delete({ where: { userId_productId: { userId: session.user.id, productId } } })
+      .catch(() => null);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('wishlist DELETE', err);
