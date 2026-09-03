@@ -112,6 +112,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.notesPlaceholder': 'Share QR code URL, sizing, or a reference link for this order.',
 
     'productDetail.rating': '{rating} ({count} reviews)',
+    'productDetail.noReviews': 'No reviews yet',
+    'productDetail.stlContactEmail': 'To buy the STL file, contact the store owner at {email}.',
+    'productDetail.stlContactStore': 'To buy the STL file, contact the store owner ({store}) through their store page.',
     'productDetail.tags': 'Tags:',
     'productDetail.addToCart': 'Add to Cart',
     'productDetail.inCart': 'You have {count} of this item in your cart.',
@@ -288,6 +291,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.notesPlaceholder': 'شارك رابط رمز QR أو المقاسات أو رابط مرجعي لهذا الطلب.',
 
     'productDetail.rating': '{rating} ({count} مراجعة)',
+    'productDetail.noReviews': 'لا توجد مراجعات بعد',
+    'productDetail.stlContactEmail': 'لشراء ملف STL، تواصل مع صاحب المتجر عبر {email}.',
+    'productDetail.stlContactStore': 'لشراء ملف STL، تواصل مع صاحب المتجر ({store}) من خلال صفحة المتجر.',
     'productDetail.tags': 'الوسوم:',
     'productDetail.addToCart': 'أضف إلى السلة',
     'productDetail.inCart': 'لديك {count} من هذا المنتج في السلة.',

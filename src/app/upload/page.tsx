@@ -74,15 +74,6 @@ export default function UploadPage() {
     setError(null);
   };
 
-  const fileToDataUrl = (file: File) => {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!file || !user) {
@@ -98,13 +89,22 @@ export default function UploadPage() {
     setError(null);
 
     try {
-      const dataUrl = await fileToDataUrl(file);
+      // Upload the STL to Supabase Storage through our own API (service role on
+      // the server) — /api/uploads only accepts Storage URLs, never data: URLs.
+      const form = new FormData();
+      form.append('kind', 'model');
+      form.append('file', file);
+      const storageRes = await fetch('/api/storage/upload', { method: 'POST', body: form });
+      const storageData = await storageRes.json().catch(() => ({}));
+      if (!storageRes.ok || !storageData?.url) {
+        throw new Error(storageData?.error || 'Could not upload the file');
+      }
       const uploadData = {
         modelName,
         fileName: file.name,
-        filePath: `uploads/${user.id || user.uid || 'user'}/${Date.now()}-${file.name}`,
-        fileUrl: dataUrl,
-        downloadURL: dataUrl,
+        filePath: storageData.path,
+        fileUrl: storageData.url,
+        downloadURL: storageData.url,
         notes,
         userId: user.id || user.uid,
         userEmail: user.email,

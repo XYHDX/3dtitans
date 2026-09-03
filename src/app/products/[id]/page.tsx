@@ -91,8 +91,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     return notFound();
   }
 
-  const rating = product.rating || 4.5;
-  const reviewCount = product.reviewCount || 117;
+  // Real data only — no fake fallbacks (matches product-card.tsx).
+  // New products honestly show "No reviews yet" instead of a made-up 4.5 (117).
+  const rating = product.rating ?? 0;
+  const reviewCount = product.reviewCount ?? 0;
+  const hasReviews = reviewCount > 0;
+  const filledStars = Math.round(Math.min(5, Math.max(0, rating)));
   const storeName = product.storeName || product.uploaderName || product.uploaderEmail || 'Store';
   const quantityInCart = getItemQuantity(product.id);
   const goToPrev = () => {
@@ -233,16 +237,25 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="flex items-center mt-4">
-              <div className="flex items-center text-accent">
-                <Star className="w-5 h-5 fill-current" />
-                <Star className="w-5 h-5 fill-current" />
-                <Star className="w-5 h-5 fill-current" />
-                <Star className="w-5 h-5 fill-current" />
-                <Star className="w-5 h-5 fill-muted stroke-accent" />
-              </div>
-              <span className="ml-2 text-muted-foreground text-sm">
-                {t('productDetail.rating', '', { rating: rating.toFixed(1), count: reviewCount })}
-              </span>
+              {hasReviews ? (
+                <>
+                  <div className="flex items-center text-accent">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <Star
+                        key={i}
+                        className={cn('w-5 h-5', i < filledStars ? 'fill-current' : 'fill-muted stroke-accent')}
+                      />
+                    ))}
+                  </div>
+                  <span className="ml-2 text-muted-foreground text-sm">
+                    {t('productDetail.rating', '', { rating: rating.toFixed(1), count: reviewCount })}
+                  </span>
+                </>
+              ) : (
+                <span className="text-muted-foreground text-sm italic">
+                  {t('productDetail.noReviews', 'No reviews yet')}
+                </span>
+              )}
             </div>
 
             <Separator className="my-6" />
@@ -254,7 +267,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             </p>
 
             <p className="mt-3 text-sm font-semibold text-destructive">
-              If you want to buy the STL file contact the store owner at {product.uploaderEmail || 'their email is not available'}.
+              {product.uploaderEmail
+                ? t('productDetail.stlContactEmail', '', { email: product.uploaderEmail })
+                : t('productDetail.stlContactStore', '', { store: storeName })}
             </p>
 
             {product.tags && product.tags.length > 0 && (
