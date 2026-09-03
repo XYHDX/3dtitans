@@ -3,6 +3,10 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+// API routes depend on the request (query string / session cookies) and must
+// never be pre-rendered at build time.
+export const dynamic = 'force-dynamic';
+
 function mapProduct(product: any) {
   let gallery: string[] = [];
   if (product.imageGallery) {

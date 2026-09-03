@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+// API routes depend on the request (query string / session cookies) and must
+// never be pre-rendered at build time.
+export const dynamic = 'force-dynamic';
+
 /**
  * Sitewide search across Products and Stores.
  *

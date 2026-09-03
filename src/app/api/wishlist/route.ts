@@ -3,6 +3,10 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+// API routes depend on the request (query string / session cookies) and must
+// never be pre-rendered at build time.
+export const dynamic = 'force-dynamic';
+
 /**
  * Validates that an arbitrary value from a request body is a usable productId.
  * Returns the trimmed string if OK, or null if it's anything we don't trust.

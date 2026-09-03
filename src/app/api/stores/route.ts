@@ -4,6 +4,10 @@ import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 
+// API routes depend on the request (query string / session cookies) and must
+// never be pre-rendered at build time.
+export const dynamic = 'force-dynamic';
+
 function slugify(input: string) {
   return input
     .toLowerCase()
