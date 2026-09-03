@@ -1,11 +1,23 @@
 import { authOptions } from '@/lib/auth/options';
 import { rateLimit } from '@/lib/rate-limit';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createClient } from '@supabase/supabase-js';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/**
+ * Service-role Supabase client, created here on purpose: `lib/supabase/admin.ts`
+ * is marked `'use server'`, and Next.js only allows async-function exports from
+ * such files, so importing its client object breaks the production build.
+ */
+function getAdminClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 /**
  * POST /api/storage/upload  (multipart/form-data)
@@ -53,6 +65,7 @@ export async function POST(req: Request) {
   const user = session?.user;
   if (!user?.id) return NextResponse.json({ error: 'Login required' }, { status: 401 });
 
+  const supabaseAdmin = getAdminClient();
   if (!supabaseAdmin) {
     return NextResponse.json(
       { error: 'File storage is not configured on the server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).' },
