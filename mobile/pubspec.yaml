@@ -1,0 +1,59 @@
+name: titans_app
+description: "3D Titans — the mobile app for the 3dtitans.org 3D model & print marketplace."
+publish_to: "none"
+
+version: 1.1.0+2
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  # Networking against https://3dtitans.org/api
+  http: ^1.4.0
+  # MediaType for multipart uploads (comes with http)
+  http_parser: ^4.1.0
+  # Simple app-wide state (ChangeNotifier based)
+  provider: ^6.1.5
+  # Persists settings, guest cart/wishlist and the login session cookie
+  shared_preferences: ^2.5.3
+  # Opens 3dtitans.org pages (Stripe checkout, store websites, mailto)
+  url_launcher: ^6.3.1
+  # Picks STL files and payment-proof images (Files / Photos)
+  file_picker: ^12.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  fonts:
+    - family: PressStart2P
+      fonts:
+        - asset: assets/fonts/PressStart2P-Regular.ttf
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+        - asset: assets/fonts/SpaceMono-Italic.ttf
+          style: italic
+        - asset: assets/fonts/SpaceMono-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/SpaceMono-BoldItalic.ttf
+          weight: 700
+          style: italic
+    # Arabic UI font: geometric Kufi (variable weight 100-900) — the closest
+    # Arabic match to the pixel-art Latin headline font.
+    - family: NotoKufiArabic
+      fonts:
+        - asset: assets/fonts/NotoKufiArabic-Variable.ttf
