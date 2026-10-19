@@ -161,8 +161,17 @@ class _CartLineTile extends StatelessWidget {
                           ? null
                           : () => cart.setQuantity(product, line.quantity + 1),
                     ),
-                    const Spacer(),
-                    Text(Fmt.price(line.lineTotal), style: theme.textTheme.headlineSmall),
+                    const SizedBox(width: 8),
+                    // Scales down so long totals ("SYP 150000.00") never overflow.
+                    Expanded(
+                      child: Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(Fmt.price(line.lineTotal), style: theme.textTheme.headlineSmall),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -207,8 +216,16 @@ class _CartSummary extends StatelessWidget {
                   '${t.subtotal} · ${t.itemsCount(cart.itemCount)}',
                   style: theme.textTheme.bodyMedium,
                 ),
-                const Spacer(),
-                Text(Fmt.price(cart.subtotal), style: theme.textTheme.displaySmall),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(Fmt.price(cart.subtotal), style: theme.textTheme.displaySmall),
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),

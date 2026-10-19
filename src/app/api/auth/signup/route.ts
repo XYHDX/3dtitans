@@ -2,19 +2,16 @@ import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
+import { validatePassword } from '@/lib/password';
 
-async function ensurePriorityColumn() {
-  try {
-    await prisma.$executeRawUnsafe(
-      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPrioritizedStore" BOOLEAN DEFAULT FALSE;'
-    );
-    return true;
-  } catch (err) {
-    console.error('Failed to ensure isPrioritizedStore column (signup)', err);
-    return false;
-  }
-}
-
+/**
+ * POST /api/auth/signup  body: { email, password, name? }
+ *
+ * Creates a NEW customer account. Every account starts with role 'user' —
+ * roles are only ever changed by an admin. An email that is already
+ * registered is rejected: signup must never overwrite an existing account's
+ * password (that would let anyone take over any account, including admins).
+ */
 export async function POST(req: Request) {
   try {
     const limited = rateLimit(req, 'signup', { windowMs: 10 * 60 * 1000, max: 10 });
@@ -22,107 +19,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Too many signup attempts. Please try again later.' }, { status: 429 });
     }
 
-    const body = await req.json();
-    const email = (body.email || '').toLowerCase().trim();
-    const password: string = body.password || '';
-    const name: string = body.name || body.displayName || '';
-    const seededRoles: Record<string, 'admin' | 'store-owner' | 'user'> = {
-      'admin@3dtitans.com': 'admin',
-      'owner@3dtitans.com': 'store-owner',
-      'yahyademeriah@gmail.com': 'admin',
-      'aboude.murad@gmail.com': 'store-owner',
-    };
+    const body = await req.json().catch(() => ({}));
+    const email = String(body.email || '').toLowerCase().trim();
+    const password: string = typeof body.password === 'string' ? body.password : '';
+    const name = String(body.name || body.displayName || '').trim().slice(0, 100);
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
-    const hasMinLength = password.length >= 8;
-    const hasLetter = /[A-Za-z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    if (!hasMinLength || !hasLetter || !hasNumber) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters and include a letter and a number.' },
-        { status: 400 }
+        { error: 'An account with this email already exists. Log in, or use "Forgot password".' },
+        { status: 409 }
       );
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-
     try {
-      const existing = await prisma.user.findUnique({ where: { email } });
-      const user = existing
-        ? await prisma.user.update({
-            where: { id: existing.id },
-            data: {
-              passwordHash,
-              name: existing.name || name || email.split('@')[0],
-              role: existing.role || seededRoles[email] || 'user',
-            },
-          })
-        : await prisma.user.create({
-            data: {
-              email,
-              name: name || email.split('@')[0],
-              passwordHash,
-              role: seededRoles[email] || 'user',
-            },
-          });
-
-      return NextResponse.json({
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
-      });
-    } catch (dbError) {
-      console.error('Signup db error, attempting column fix', dbError);
-      const ensured = await ensurePriorityColumn();
-      if (ensured) {
-        try {
-          const existing = await prisma.user.findUnique({ where: { email } });
-          const user = existing
-            ? await prisma.user.update({
-                where: { id: existing.id },
-                data: {
-                  passwordHash,
-                  name: existing.name || name || email.split('@')[0],
-                  role: existing.role || seededRoles[email] || 'user',
-                },
-              })
-            : await prisma.user.create({
-                data: {
-                  email,
-                  name: name || email.split('@')[0],
-                  passwordHash,
-                  role: seededRoles[email] || 'user',
-                },
-              });
-
-          return NextResponse.json({
-            user: {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              role: user.role,
-            },
-          });
-        } catch (dbError2) {
-          console.error('Signup db retry failed', dbError2);
-        }
-      }
-      console.error('Signup db error, falling back to transient user', dbError);
-      // Fallback: allow signup without DB persistence to unblock.
-      return NextResponse.json({
-        user: {
-          id: email,
+      const user = await prisma.user.create({
+        data: {
           email,
           name: name || email.split('@')[0],
-          role: seededRoles[email] || 'user',
+          passwordHash,
+          role: 'user',
         },
-        warning: 'User saved transiently; database unreachable.',
       });
+      return NextResponse.json({
+        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      });
+    } catch (error: any) {
+      // Two simultaneous signups for the same email — the unique index wins.
+      if (error?.code === 'P2002') {
+        return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
+      }
+      throw error;
     }
   } catch (error) {
     console.error('Signup error', error);

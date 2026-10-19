@@ -110,6 +110,13 @@ export type Order = {
   isPrioritized?: boolean;
   assignedAdminIds: string[];
   updatedAt?: Timestamp | Date | string;
+  /** Customer-facing reference, e.g. "3DT-AB12CD34". */
+  reference?: string;
+  paymentMethod?: 'cod' | 'bank_transfer' | 'sham_cash' | 'syriatel_cash' | 'stripe' | null;
+  paymentStatus?: 'pending' | 'verifying' | 'paid' | 'failed' | 'refunded';
+  paymentReference?: string | null;
+  hasPaymentProof?: boolean;
+  paidAt?: Timestamp | Date | string | null;
 }
 
 export type UserProfile = {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useCurrency } from '@/hooks/use-currency';
 import { useCart } from '@/hooks/use-cart';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
@@ -16,6 +17,7 @@ interface CartSheetProps {
 }
 
 export function CartSheet({ open, onOpenChange }: CartSheetProps) {
+  const { format: formatPrice } = useCurrency();
   const { cart, removeFromCart, updateQuantity, total, clearCart } = useCart();
   const { t } = useTranslation();
   const { user } = useSessionUser();
@@ -41,7 +43,7 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
                     />
                     <div className="flex-grow">
                       <p className="font-semibold text-sm">{item.name}</p>
-                      <p className="text-lg font-bold mt-1">${item.price.toFixed(2)}</p>
+                      <p className="text-lg font-bold mt-1">{formatPrice(item.price)}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <Button
                           variant="outline"
@@ -76,7 +78,7 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
                 <div className='w-full space-y-4'>
                     <div className="flex justify-between items-center font-bold text-xl">
                         <span>{t('cart.total')}</span>
-                        <span>${total.toFixed(2)}</span>
+                        <span>{formatPrice(total)}</span>
                     </div>
                     {user ? (
                       <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>

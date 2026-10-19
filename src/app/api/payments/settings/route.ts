@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { getPaymentSettings } from '@/lib/payments/settings';
 import { NextResponse } from 'next/server';
 
 // Force dynamic + no caching so admin toggles take effect immediately
@@ -8,19 +8,32 @@ export const revalidate = 0;
 /**
  * GET /api/payments/settings — public payment configuration.
  *
- * Returns which methods are enabled and the customer-facing details
- * (bank/wallet numbers). Admin-only fields (Stripe secrets etc.) live
- * in env vars and are never sent.
+ * Returns which methods customers can use and the customer-facing details
+ * (bank/wallet numbers). A method is reported as enabled only when it is
+ * switched on AND fully configured (e.g. Sham Cash needs a wallet number) —
+ * the same rule the order API enforces. Secrets live in env vars and are never sent.
  */
 export async function GET() {
   try {
-    const rows = await prisma.siteSetting.findMany({
-      where: { key: { startsWith: 'payment.' } },
-    });
-    const map: Record<string, string> = {};
-    rows.forEach((r) => (map[r.key] = r.value));
+    const { raw, available, currency, shamCashAutoVerify } = await getPaymentSettings();
+    const pick = (k: string) => raw[`payment.${k}`] || '';
+    const settings: Record<string, string> = {
+      'payment.codEnabled': String(available.cod),
+      'payment.bankEnabled': String(available.bank_transfer),
+      'payment.shamCashEnabled': String(available.sham_cash),
+      'payment.syriatelCashEnabled': String(available.syriatel_cash),
+      'payment.stripeEnabled': String(available.stripe),
+      'payment.bankName': pick('bankName'),
+      'payment.bankAccountNumber': pick('bankAccountNumber'),
+      'payment.bankIban': pick('bankIban'),
+      'payment.bankAccountHolder': pick('bankAccountHolder'),
+      'payment.shamCashNumber': pick('shamCashNumber'),
+      'payment.syriatelCashNumber': pick('syriatelCashNumber'),
+      'payment.currencyLabel': currency,
+      'payment.shamCashAutoVerify': String(available.sham_cash && shamCashAutoVerify),
+    };
     return NextResponse.json(
-      { settings: map },
+      { settings },
       { headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } }
     );
   } catch (err) {

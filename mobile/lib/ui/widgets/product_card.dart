@@ -136,12 +136,14 @@ class ProductCard extends StatelessWidget {
                     const Spacer(),
                     Row(
                       children: [
+                        // Scale long prices down instead of cutting them off.
                         Expanded(
-                          child: Text(
-                            Fmt.price(product.price),
-                            style: theme.textTheme.headlineSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(Fmt.price(product.price), style: theme.textTheme.headlineSmall),
+                            ),
                           ),
                         ),
                         _AddToCartButton(product: product),

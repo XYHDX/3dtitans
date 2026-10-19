@@ -11,7 +11,21 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await prisma.upload.delete({ where: { id: id } });
+  const upload = await prisma.upload.findUnique({
+    where: { id },
+    select: { assignedOwnerId: true, assignedOwnerEmail: true },
+  });
+  if (!upload) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Store owners may only delete uploads assigned to them; admins may delete any.
+  const assignedToMe =
+    upload.assignedOwnerId === user.id ||
+    (!!upload.assignedOwnerEmail && !!user.email && upload.assignedOwnerEmail.toLowerCase() === user.email.toLowerCase());
+  if (user.role !== 'admin' && !assignedToMe) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  await prisma.upload.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
 

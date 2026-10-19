@@ -336,8 +336,8 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) return { ok: false };
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: (data?.error as string) || 'Failed to place order' };
     setOrders((prev) => [data.order, ...prev]);
     return { ok: true, order: data.order as Order };
   }, []);
@@ -346,15 +346,15 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
+      // The total is never sent — the server recomputes it (e.g. on prioritize).
       body: JSON.stringify({
         status: patch.status,
         predictedFinishDate: (patch as any).predictedFinishDate,
         isPrioritized: patch.isPrioritized,
-        totalAmount: patch.totalAmount,
       }),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || 'Failed to update order');
     setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
     return data.order as Order;
   }, []);

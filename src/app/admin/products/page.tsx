@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from '@/hooks/use-currency';
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -323,7 +324,7 @@ function EditProductDialog({
             )}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`edit-price-${product.id}`}>Price ($)</Label>
+            <Label htmlFor={`edit-price-${product.id}`}>Price</Label>
             <Input
               id={`edit-price-${product.id}`}
               type="number"
@@ -532,6 +533,7 @@ function DeleteProductAlert({
 }
 
 function ProductsManager() {
+  const { format: formatPrice } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const { user } = useSessionUser();
@@ -692,7 +694,7 @@ function ProductsManager() {
                 <Input id="add-product-tags" {...register("tags")} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-price">Price ($)</Label>
+                <Label htmlFor="add-product-price">Price</Label>
                 <Input
                   id="add-product-price"
                   type="number"
@@ -810,7 +812,7 @@ function ProductsManager() {
                       <TableCell className="text-xs text-muted-foreground">
                         {product.uploaderName}
                       </TableCell>
-                      <TableCell>${product.price.toFixed(2)}</TableCell>
+                      <TableCell>{formatPrice(product.price)}</TableCell>
                       <TableCell>
                         {(() => {
                           if (!product.createdAt) return "N/A";

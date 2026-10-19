@@ -1,4 +1,5 @@
 'use client';
+import { useCurrency } from '@/hooks/use-currency';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ const ClaimOrderButton = ({ order, onClaim, onAfterClaim }: { order: Order; onCl
 }
 
 export default function OrderPoolPage() {
+  const { format: formatPrice } = useCurrency();
     const { user } = useSessionUser();
     const { data: orders, loading, claimOrder, deleteOrder, refresh } = useOrders({ statusIn: ['Pooled'] as any });
 
@@ -100,7 +102,7 @@ export default function OrderPoolPage() {
                                             : 'N/A'}
                                     </TableCell>
                                     <TableCell>{order.items.reduce((acc, item) => acc + item.quantity, 0)}</TableCell>
-                                    <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
+                                    <TableCell>{formatPrice(order.totalAmount)}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex items-center justify-end gap-2">
                                             <ClaimOrderButton order={order} onClaim={claimOrder} onAfterClaim={refresh} />

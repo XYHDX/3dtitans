@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useCurrency } from '@/hooks/use-currency';
 import { useCart } from '@/hooks/use-cart';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,7 @@ type AddressFormData = {
 
 
 export default function CheckoutPage() {
+  const { format: formatPrice } = useCurrency();
   const { cart, clearCart, total } = useCart();
   const { user } = useSessionUser();
   const { createOrder } = useOrders(undefined, { skipFetch: true });
@@ -141,6 +143,10 @@ export default function CheckoutPage() {
       toast({ variant: 'destructive', title: t('checkout.storeOwnerBlockedTitle'), description: t('checkout.storeOwnerBlockedDesc') });
       return;
     }
+    if (!idempotencyKey) {
+      toast({ variant: 'destructive', title: 'Checkout not ready', description: 'Please refresh the page and try again.' });
+      return;
+    }
 
     setLoading(true);
 
@@ -171,7 +177,7 @@ export default function CheckoutPage() {
       };
 
       const result = await createOrder(orderData as any);
-      if (!result.ok || !result.order) throw new Error('Failed to place order');
+      if (!result.ok || !result.order) throw new Error(result.error || 'Failed to place order');
 
       // Stripe path — redirect to hosted checkout instead of the local success page.
       if (paymentMethod === 'stripe') {
@@ -306,7 +312,8 @@ export default function CheckoutPage() {
                   </div>
                    <div className="grid gap-2">
                     <Label htmlFor="email">{t('checkout.labels.email')}</Label>
-                    <Input id="email" type="email" {...register('email')} />
+                    {/* Order emails always go to the account's email address. */}
+                    <Input id="email" type="email" readOnly aria-readonly className="bg-muted" {...register('email')} />
                     {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
                   </div>
                    <div className="grid gap-2">
@@ -387,13 +394,13 @@ export default function CheckoutPage() {
                           <p className="font-semibold">{item.name}</p>
                           <p className="text-sm text-muted-foreground">Quantity: {item.quantity}</p>
                         </div>
-                        <p className="font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                        <p className="font-semibold">{formatPrice(item.price * item.quantity)}</p>
                       </div>
                     ))}
                     <Separator />
                     <div className="flex justify-between items-center text-lg font-semibold">
                       <p>{t('cart.total')}</p>
-                      <p>${total.toFixed(2)}</p>
+                      <p>{formatPrice(total)}</p>
                     </div>
                   </div>
                 )}

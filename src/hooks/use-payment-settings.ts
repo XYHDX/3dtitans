@@ -19,6 +19,8 @@ export type PaymentSettings = {
   syriatelCashNumber: string;
 
   currencyLabel: string;
+  /** Sham Cash transfers are confirmed automatically through the Sham Cash API. */
+  shamCashAutoVerify: boolean;
 };
 
 /**
@@ -38,7 +40,8 @@ const DEFAULTS: PaymentSettings = {
   bankAccountHolder: '',
   shamCashNumber: '',
   syriatelCashNumber: '',
-  currencyLabel: 'USD',
+  currencyLabel: 'SYP',
+  shamCashAutoVerify: false,
 };
 
 /**
@@ -72,7 +75,8 @@ export function usePaymentSettings() {
           bankAccountHolder:   raw['payment.bankAccountHolder']   || '',
           shamCashNumber:      raw['payment.shamCashNumber']      || '',
           syriatelCashNumber:  raw['payment.syriatelCashNumber']  || '',
-          currencyLabel:       raw['payment.currencyLabel']       || 'USD',
+          currencyLabel:       raw['payment.currencyLabel']       || 'SYP',
+          shamCashAutoVerify:  raw['payment.shamCashAutoVerify']  === 'true',
         };
         if (!cancelled) setSettings(parsed);
       } catch (err) {

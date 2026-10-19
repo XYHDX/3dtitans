@@ -74,6 +74,13 @@ async function getPrioritizedIds() {
   }
 }
 
+/** Price must be a positive number with at most 2 decimals. Returns the number or null. */
+function parsePrice(raw: unknown): number | null {
+  const n = typeof raw === 'string' ? Number(raw.trim()) : Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) return null;
+  return Math.round(n * 100) / 100;
+}
+
 async function canManage(user: any, product: any) {
   if (!user) return false;
   if (user.role === 'admin') return true;
@@ -133,7 +140,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updateData: any = {};
   if (name !== undefined) updateData.name = name;
   if (category !== undefined) updateData.category = category;
-  if (price !== undefined) updateData.price = price;
+  if (price !== undefined) {
+    const validPrice = parsePrice(price);
+    if (validPrice === null) return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+    updateData.price = validPrice;
+  }
   if (description !== undefined) updateData.description = description;
   if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.join(',') : tags;
   if (imageUrl !== undefined) updateData.imageUrl = imageUrl;

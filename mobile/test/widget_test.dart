@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:titans_app/app.dart';
+import 'package:titans_app/core/format.dart';
 
 /// Canned API answers shaped like the live 3dtitans.org responses.
 http.Client fakeApi() {
@@ -163,7 +164,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.shopping_cart_outlined));
     await tester.pumpAndSettle();
     expect(find.text('YOUR CART'), findsOneWidget);
-    expect(find.text(r'$7.00'), findsWidgets);
+    expect(find.text(Fmt.price(7)), findsWidgets);
     expect(find.text('Checkout'.toUpperCase()), findsOneWidget);
 
     // Guest cart is persisted on the device.

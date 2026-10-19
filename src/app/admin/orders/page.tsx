@@ -18,16 +18,23 @@ import { useSessionUser } from '@/hooks/use-session';
 import { useOrders } from '@/hooks/use-data';
 import { useTranslation } from '@/components/language-provider';
 import type { Order } from '@/lib/types';
+import { useCurrency } from '@/hooks/use-currency';
+import { PaymentStatusBadge, paymentMethodLabel } from '@/components/payment-status-badge';
+import { orderReference } from '@/lib/payments/common';
 
 const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
 
     const handleStatusChange = async (newStatus: Order['status']) => {
-        await onUpdate(order.id, { status: newStatus });
-        toast({
-            title: 'Order Status Updated',
-            description: `Order ${order.id.substring(0, 8)} is now ${newStatus}.`,
-        });
+        try {
+            await onUpdate(order.id, { status: newStatus });
+            toast({
+                title: 'Order Status Updated',
+                description: `Order ${orderReference(order.id)} is now ${newStatus}.`,
+            });
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Could not update status', description: err.message });
+        }
     };
 
     if (order.status === 'AwaitingAcceptance') {
@@ -55,7 +62,7 @@ const OrderStatusSelector = ({ order, onUpdate }: { order: Order; onUpdate: (id:
     }
 
     return (
-        <Select defaultValue={order.status} onValueChange={handleStatusChange as any}>
+        <Select value={order.status} onValueChange={handleStatusChange as any}>
             <SelectTrigger className="w-[120px]">
                 <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -83,11 +90,14 @@ const PredictedDateSelector = ({ order, onUpdate }: { order: Order; onUpdate: (i
     const handleDateSelect = (selectedDate: Date | undefined) => {
         if (!selectedDate) return;
         setDate(selectedDate);
-        onUpdate(order.id, { predictedFinishDate: selectedDate as any });
-        toast({
-            title: 'Predicted Date Set',
-            description: `Finish date for order ${order.id.substring(0, 8)} updated.`,
-        });
+        onUpdate(order.id, { predictedFinishDate: selectedDate as any })
+            .then(() =>
+                toast({
+                    title: 'Predicted Date Set',
+                    description: `Finish date for order ${orderReference(order.id)} updated.`,
+                })
+            )
+            .catch((err: any) => toast({ variant: 'destructive', title: 'Could not set date', description: err.message }));
         setOpen(false);
     }
 
@@ -113,18 +123,20 @@ const PredictedDateSelector = ({ order, onUpdate }: { order: Order; onUpdate: (i
 
 const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: string, patch: Partial<Order>) => Promise<any> }) => {
     const { toast } = useToast();
+    const { format: formatPrice } = useCurrency();
+    // Priority changes the price, so it is locked once the customer has paid / sent proof.
+    const locked = !['pending', 'failed'].includes(order.paymentStatus || 'pending');
 
     const handlePrioritizeChange = async (isPrioritized: boolean) => {
-        const newTotalAmount = isPrioritized ? order.totalAmount * 1.2 : order.totalAmount / 1.2;
-        await onUpdate(order.id, {
-            isPrioritized,
-            totalAmount: newTotalAmount
-        });
-
-        toast({
-            title: `Order ${isPrioritized ? 'Prioritized' : 'Deprioritized'}`,
-            description: `Price updated to $${newTotalAmount.toFixed(2)}.`,
-        });
+        try {
+            const updated = await onUpdate(order.id, { isPrioritized });
+            toast({
+                title: `Order ${isPrioritized ? 'Prioritized' : 'Deprioritized'}`,
+                description: `Total is now ${formatPrice(updated?.totalAmount ?? order.totalAmount)}.`,
+            });
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Could not change priority', description: err.message });
+        }
     }
 
     return (
@@ -132,12 +144,85 @@ const PrioritizeSwitch = ({ order, onUpdate }: { order: Order; onUpdate: (id: st
             <Switch
                 id={`prioritize-${order.id}`}
                 checked={order.isPrioritized || false}
+                disabled={locked}
                 onCheckedChange={handlePrioritizeChange}
             />
-            <Label htmlFor={`prioritize-${order.id}`}>Prioritize (+20%)</Label>
+            <Label htmlFor={`prioritize-${order.id}`}>
+                Prioritize (+20%){locked ? ' — locked after payment' : ''}
+            </Label>
         </div>
     )
 }
+
+/** Payment details + admin review actions for one order. */
+const PaymentPanel = ({ order, isAdmin, onChanged }: { order: Order; isAdmin: boolean; onChanged: () => void }) => {
+    const { toast } = useToast();
+    const [busy, setBusy] = useState(false);
+    const status = order.paymentStatus || 'pending';
+
+    const act = async (action: 'mark_paid' | 'reject' | 'mark_refunded') => {
+        if (action === 'mark_refunded' && !window.confirm('Mark this payment as refunded? The order will be cancelled.')) return;
+        setBusy(true);
+        try {
+            const res = await fetch('/api/payments/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: order.id, action }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Failed');
+            toast({ title: 'Payment updated', description: `${orderReference(order.id)} is now ${data.paymentStatus}.` });
+            onChanged();
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Could not update payment', description: err.message });
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="text-sm bg-background p-4 rounded-md space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                <span><strong>Method:</strong> {paymentMethodLabel(order.paymentMethod)}</span>
+                <PaymentStatusBadge status={status} method={order.paymentMethod} />
+            </div>
+            <p><strong>Reference to look for:</strong> <span className="font-mono">{orderReference(order.id)}</span></p>
+            {isAdmin && order.paymentReference && (
+                <p className="break-all"><strong>Customer reference:</strong> <span className="font-mono">{order.paymentReference}</span></p>
+            )}
+            {isAdmin && order.hasPaymentProof && (
+                <p>
+                    <a
+                        href={`/api/payments/proof/view?orderId=${encodeURIComponent(order.id)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                    >
+                        View payment screenshot
+                    </a>
+                </p>
+            )}
+            {!isAdmin && status !== 'paid' && order.paymentMethod && order.paymentMethod !== 'cod' && (
+                <p className="text-destructive text-xs">Payment not confirmed yet — don&apos;t start printing until it shows Paid.</p>
+            )}
+            {isAdmin && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                    {status !== 'paid' && status !== 'refunded' && (
+                        <>
+                            <Button size="sm" disabled={busy} onClick={() => act('mark_paid')}>Mark paid</Button>
+                            {status !== 'failed' && (
+                                <Button size="sm" variant="destructive" disabled={busy} onClick={() => act('reject')}>Reject payment</Button>
+                            )}
+                        </>
+                    )}
+                    {status === 'paid' && (
+                        <Button size="sm" variant="outline" disabled={busy} onClick={() => act('mark_refunded')}>Mark refunded</Button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 function OrdersList() {
     const { user } = useSessionUser();
@@ -146,7 +231,32 @@ function OrdersList() {
         user?.role === 'store-owner' && user?.id
             ? { ownerId: user.id, statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] as any }
             : { statusIn: ['AwaitingAcceptance', 'Pending', 'Printing', 'Finished', 'CancellationRequested', 'Cancelled'] as any };
-    const { data: orders, loading: ordersLoading, updateOrder, releaseOrderToPool } = useOrders(baseFilter);
+    const { data: allOrders, loading: ordersLoading, updateOrder, releaseOrderToPool, refresh } = useOrders(baseFilter);
+    const { format: formatPrice } = useCurrency();
+    const { toast } = useToast();
+    const isAdmin = user?.role === 'admin';
+    const [reviewOnly, setReviewOnly] = useState(false);
+    const [reconciling, setReconciling] = useState(false);
+    const toReview = allOrders.filter((o) => o.paymentStatus === 'verifying').length;
+    const orders = reviewOnly ? allOrders.filter((o) => o.paymentStatus === 'verifying') : allOrders;
+
+    const reconcileShamCash = async () => {
+        setReconciling(true);
+        try {
+            const res = await fetch('/api/payments/shamcash/reconcile');
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Check failed');
+            toast({
+                title: 'Sham Cash checked',
+                description: `${data.checked || 0} open order(s) checked, ${data.paid?.length || 0} newly paid.`,
+            });
+            refresh();
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Sham Cash check failed', description: err.message });
+        } finally {
+            setReconciling(false);
+        }
+    };
 
     if (ordersLoading) {
         return (
@@ -158,7 +268,23 @@ function OrdersList() {
         )
     }
 
+    const toolbar = (
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex items-center space-x-2">
+                <Switch id="review-only" checked={reviewOnly} onCheckedChange={setReviewOnly} />
+                <Label htmlFor="review-only">Payments to review ({toReview})</Label>
+            </div>
+            {isAdmin && (
+                <Button size="sm" variant="outline" disabled={reconciling} onClick={reconcileShamCash}>
+                    {reconciling ? 'Checking…' : 'Check Sham Cash payments'}
+                </Button>
+            )}
+        </div>
+    );
+
     return orders && orders.length > 0 ? (
+        <>
+        {toolbar}
         <Accordion type="single" collapsible className="w-full space-y-4">
             {orders.map((order) => (
                 <AccordionItem value={order.id} key={order.id} className="bg-muted/50 rounded-lg">
@@ -167,7 +293,7 @@ function OrdersList() {
                             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4 text-left">
                                 <div>
                                     <span className="font-bold block sm:inline">Order: </span>
-                                    <span className="font-mono text-xs text-muted-foreground">{order.id.substring(0, 8)}...</span>
+                                    <span className="font-mono text-xs text-muted-foreground">{orderReference(order.id)}</span>
                                 </div>
                                 <div>
                                     <span className="font-bold block sm:inline">Customer: </span>
@@ -177,7 +303,8 @@ function OrdersList() {
                         </AccordionTrigger>
                         <div className="flex items-center gap-4 py-2" onClick={(e) => e.stopPropagation()}>
                             <OrderStatusSelector order={order} onUpdate={updateOrder} />
-                            <span className="font-bold text-lg">${order.totalAmount.toFixed(2)}</span>
+                            <PaymentStatusBadge status={order.paymentStatus} method={order.paymentMethod} />
+                            <span className="font-bold text-lg">{formatPrice(order.totalAmount)}</span>
                         </div>
                     </div>
                     <AccordionContent className="px-4">
@@ -200,7 +327,7 @@ function OrdersList() {
                                                     <span>{item.name}</span>
                                                 </TableCell>
                                                 <TableCell>{item.quantity}</TableCell>
-                                                <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right">{formatPrice(item.price)}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -226,11 +353,22 @@ function OrdersList() {
                                     </div>
                                 </div>
                                 <div>
+                                    <h4 className="font-semibold mb-2">Payment:</h4>
+                                    <PaymentPanel order={order} isAdmin={isAdmin} onChanged={refresh} />
+                                </div>
+                                <div>
                                     <h4 className="font-semibold mb-2">Order Management:</h4>
                                     <div className="text-sm bg-background p-4 rounded-md space-y-4">
                                         {order.status === 'AwaitingAcceptance' ? (
                                             <div className="flex flex-wrap gap-2">
-                                                <Button size="sm" onClick={() => updateOrder(order.id, { status: 'Pending' })}>
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        updateOrder(order.id, { status: 'Pending' }).catch((err: any) =>
+                                                            toast({ variant: 'destructive', title: 'Could not accept', description: err.message })
+                                                        )
+                                                    }
+                                                >
                                                     Accept
                                                 </Button>
                                                 <Button
@@ -244,7 +382,7 @@ function OrdersList() {
                                         ) : (
                                             <>
                                                 <PredictedDateSelector order={order} onUpdate={updateOrder} />
-                                                <PrioritizeSwitch order={order} onUpdate={updateOrder} />
+                                                {isAdmin && <PrioritizeSwitch order={order} onUpdate={updateOrder} />}
                                             </>
                                         )}
                                     </div>
@@ -255,10 +393,14 @@ function OrdersList() {
                 </AccordionItem>
             ))}
         </Accordion>
+        </>
     ) : (
+        <>
+        {toolbar}
         <div className="text-center py-16">
-            <p className="text-muted-foreground">No orders found.</p>
+            <p className="text-muted-foreground">{reviewOnly ? 'No payments waiting for review.' : 'No orders found.'}</p>
         </div>
+        </>
     );
 }
 

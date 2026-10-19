@@ -1,79 +1,138 @@
 'use client';
 
 import { useState } from 'react';
-import { Upload, CheckCircle2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { Upload, CheckCircle2, Search, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
+type Props = {
+  orderId: string;
+  /** Payment method of the order — Sham Cash gets the automatic check. */
+  method?: string | null;
+  /** True when Sham Cash payments are verified through the Sham Cash API. */
+  autoVerify?: boolean;
+  /** Current payment status, so a returning customer sees the right state. */
+  paymentStatus?: string;
+  /** Called after the payment is confirmed or submitted for review. */
+  onStatusChange?: (status: 'paid' | 'verifying') => void;
+};
+
 /**
- * Upload a payment-proof screenshot for an order.
+ * Confirm a manual payment (bank transfer / Sham Cash / Syriatel Cash).
  *
- * Flow: client uploads file to Supabase Storage 'payment-proofs' bucket,
- * then POSTs the public URL to /api/payments/proof to attach it to the order.
- * Admin then verifies via the admin orders dashboard.
+ * - Sham Cash with the API connected: "I've paid — check now" looks the transfer
+ *   up instantly (by the order reference in the transfer note, or the
+ *   transaction number the customer types).
+ * - Otherwise: upload a screenshot and/or a reference; an admin confirms it.
  *
- * NOTE: requires a Supabase Storage bucket named 'payment-proofs' to be
- * created (public-read recommended). See scripts/phase4_payments_migration.sql
- * for the setup steps.
+ * Screenshots are uploaded through /api/storage/upload into a PRIVATE bucket.
  */
-export function ProofUploader({ orderId }: { orderId: string }) {
+export function ProofUploader({ orderId, method, autoVerify, paymentStatus, onStatusChange }: Props) {
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [reference, setReference] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<'idle' | 'verifying' | 'paid'>(
+    paymentStatus === 'verifying' ? 'verifying' : paymentStatus === 'paid' ? 'paid' : 'idle'
+  );
+  const [lastMessage, setLastMessage] = useState('');
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supabase) {
-      toast({ variant: 'destructive', title: 'Storage unavailable', description: 'Supabase is not configured.' });
-      return;
+  const shamAuto = method === 'sham_cash' && !!autoVerify;
+
+  function settle(status: 'paid' | 'verifying') {
+    setState(status);
+    onStatusChange?.(status);
+  }
+
+  async function checkShamCash() {
+    setBusy(true);
+    setLastMessage('');
+    try {
+      const res = await fetch('/api/payments/shamcash/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, transactionId: reference.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.outcome === 'paid') {
+        settle('paid');
+        toast({ title: 'Payment confirmed', description: 'Thank you! Your order is now paid.' });
+      } else if (data?.outcome === 'needs_review') {
+        settle('verifying');
+        toast({ title: 'Transfer found', description: data.message });
+      } else {
+        setLastMessage(data?.message || data?.error || 'We could not confirm the payment yet.');
+      }
+    } catch {
+      setLastMessage('Could not check right now. Please try again in a minute.');
+    } finally {
+      setBusy(false);
     }
+  }
+
+  async function submitProof(e: React.FormEvent) {
+    e.preventDefault();
     if (!file && !reference.trim()) {
       toast({ variant: 'destructive', title: 'Add proof', description: 'Upload a screenshot or paste a transfer reference.' });
       return;
     }
-    setUploading(true);
+    setBusy(true);
     try {
       let proofUrl = '';
       if (file) {
-        const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-        const path = `${orderId}-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('payment-proofs')
-          .upload(path, file, { upsert: true, contentType: file.type });
-        if (upErr) throw new Error(upErr.message);
-        proofUrl = supabase.storage.from('payment-proofs').getPublicUrl(path).data.publicUrl;
+        const form = new FormData();
+        form.append('kind', 'proof');
+        form.append('file', file);
+        const up = await fetch('/api/storage/upload', { method: 'POST', body: form });
+        const upData = await up.json().catch(() => ({}));
+        if (!up.ok || !upData?.url) throw new Error(upData?.error || 'Upload failed');
+        proofUrl = upData.url;
       }
 
       const res = await fetch('/api/payments/proof', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, proofUrl, reference: reference.trim() }),
+        body: JSON.stringify({ orderId, proofUrl: proofUrl || undefined, reference: reference.trim() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to attach proof');
 
-      setDone(true);
-      toast({ title: 'Proof submitted', description: 'We’ll verify and confirm your order shortly.' });
+      if (data.paymentStatus === 'paid') {
+        settle('paid');
+        toast({ title: 'Payment confirmed', description: 'Thank you! Your order is now paid.' });
+      } else {
+        settle('verifying');
+        toast({ title: 'Proof submitted', description: 'We’ll verify and confirm your order shortly.' });
+      }
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
     } finally {
-      setUploading(false);
+      setBusy(false);
     }
   }
 
-  if (done) {
+  if (state === 'paid') {
     return (
       <div className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--accent))]">
         <div className="flex items-center gap-2 mb-1">
           <CheckCircle2 className="h-5 w-5 text-[hsl(var(--pixel-green))]" />
-          <strong className="font-headline text-sm">PROOF SUBMITTED</strong>
+          <strong className="font-headline text-sm">PAYMENT CONFIRMED</strong>
+        </div>
+        <p className="text-xs text-muted-foreground">Thank you — we&rsquo;ll start processing your order.</p>
+      </div>
+    );
+  }
+
+  if (state === 'verifying') {
+    return (
+      <div className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--accent))]">
+        <div className="flex items-center gap-2 mb-1">
+          <Clock className="h-5 w-5" />
+          <strong className="font-headline text-sm">PAYMENT UNDER REVIEW</strong>
         </div>
         <p className="text-xs text-muted-foreground">
-          Our team will verify within 24 hours. You&rsquo;ll get an email when payment is confirmed.
+          Our team will verify it within 24 hours. You&rsquo;ll get an email when payment is confirmed.
         </p>
       </div>
     );
@@ -81,7 +140,7 @@ export function ProofUploader({ orderId }: { orderId: string }) {
 
   return (
     <form
-      onSubmit={submit}
+      onSubmit={submitProof}
       className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--foreground))] dark:shadow-[4px_4px_0_0_hsl(var(--accent))]"
     >
       <div className="flex items-center gap-2 mb-3">
@@ -89,25 +148,59 @@ export function ProofUploader({ orderId }: { orderId: string }) {
         <strong className="font-headline text-xs uppercase tracking-wider">Confirm your payment</strong>
       </div>
       <div className="space-y-3">
-        <label className="block text-xs">
-          <span className="font-headline uppercase tracking-wider text-[10px]">Screenshot of transfer</span>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="block w-full mt-1 text-xs file:mr-3 file:border-[2px] file:border-foreground file:bg-background file:text-foreground file:px-3 file:py-1 file:font-headline file:text-[10px] file:cursor-pointer hover:file:bg-accent"
-          />
-        </label>
-        <Input
-          value={reference}
-          onChange={(e) => setReference(e.target.value)}
-          placeholder="Or paste a transfer reference number"
-          aria-label="Transfer reference"
-        />
-        <Button type="submit" disabled={uploading} className="w-full">
-          {uploading ? 'Uploading...' : 'Submit payment proof'}
-        </Button>
+        {shamAuto ? (
+          <>
+            <Input
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="Sham Cash transaction number (optional)"
+              aria-label="Sham Cash transaction number"
+              inputMode="numeric"
+            />
+            <Button type="button" onClick={checkShamCash} disabled={busy} className="w-full">
+              <Search className="h-4 w-4 mr-2" />
+              {busy ? 'Checking...' : 'I’ve paid — check now'}
+            </Button>
+            {lastMessage && <p className="text-xs text-destructive">{lastMessage}</p>}
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">Still not found? Send a screenshot instead</summary>
+              <div className="space-y-3 mt-3">
+                <ScreenshotInput onChange={setFile} />
+                <Button type="submit" variant="outline" disabled={busy} className="w-full">
+                  {busy ? 'Uploading...' : 'Submit screenshot for review'}
+                </Button>
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            <ScreenshotInput onChange={setFile} />
+            <Input
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="Or paste a transfer reference number"
+              aria-label="Transfer reference"
+            />
+            <Button type="submit" disabled={busy} className="w-full">
+              {busy ? 'Uploading...' : 'Submit payment proof'}
+            </Button>
+          </>
+        )}
       </div>
     </form>
+  );
+}
+
+function ScreenshotInput({ onChange }: { onChange: (f: File | null) => void }) {
+  return (
+    <label className="block text-xs">
+      <span className="font-headline uppercase tracking-wider text-[10px]">Screenshot of transfer</span>
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        onChange={(e) => onChange(e.target.files?.[0] || null)}
+        className="block w-full mt-1 text-xs file:mr-3 file:border-[2px] file:border-foreground file:bg-background file:text-foreground file:px-3 file:py-1 file:font-headline file:text-[10px] file:cursor-pointer hover:file:bg-accent"
+      />
+    </label>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useCurrency } from '@/hooks/use-currency';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -47,6 +48,7 @@ function pushRecent(q: string) {
 }
 
 export function SiteSearch({ className }: { className?: string }) {
+  const { format: formatPrice } = useCurrency();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -291,7 +293,7 @@ export function SiteSearch({ className }: { className?: string }) {
                             {p.category}{p.storeName ? ` · ${p.storeName}` : ''}
                           </div>
                         </div>
-                        <div className="font-headline text-xs shrink-0">${p.price.toFixed(2)}</div>
+                        <div className="font-headline text-xs shrink-0">{formatPrice(p.price)}</div>
                       </Link>
                     );
                   })}

@@ -2,8 +2,13 @@
 class Fmt {
   Fmt._();
 
-  /// Prices on 3dtitans.org are USD with two decimals (`$7.00`).
-  static String price(num value) => '\$${value.toStringAsFixed(2)}';
+  /// Store currency (admin → Settings → Payments). Updated from
+  /// `/api/payments/settings` whenever the app loads payment settings, so prices
+  /// match the website and the payment instructions.
+  static String currency = 'SYP';
+
+  /// Price in the store currency with two decimals (`SYP 15000.00`).
+  static String price(num value) => '$currency ${value.toStringAsFixed(2)}';
 
   /// Product categories on the site are free text typed by each seller, so
   /// the same category shows up as `Vase`/`vase`, `Book Mark`/`book marks`,

@@ -18,7 +18,17 @@ function getIdentifier(req: Request) {
 }
 
 export function rateLimit(req: Request, key: string, opts: Options): { ok: boolean; retryAfter?: number } {
-  const id = `${key}:${getIdentifier(req)}`;
+  return rateLimitByKey(`${key}:${getIdentifier(req)}`, opts);
+}
+
+/**
+ * Rate-limit on an arbitrary key (e.g. `login:<email>`, `orders:<userId>`).
+ *
+ * NOTE: buckets live in this server instance's memory, so on Vercel each
+ * instance counts separately. It still stops naive brute-force loops; move to
+ * a shared store (e.g. Upstash Redis) if you need a hard global limit.
+ */
+export function rateLimitByKey(id: string, opts: Options): { ok: boolean; retryAfter?: number } {
   const now = Date.now();
   const bucket = buckets.get(id) || { hits: [] };
 

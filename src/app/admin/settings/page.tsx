@@ -334,12 +334,15 @@ function PaymentsTab() {
       <Card>
         <CardHeader>
           <CardTitle>Currency</CardTitle>
-          <CardDescription>Label shown on the order summary and checkout success page.</CardDescription>
+          <CardDescription>
+            The currency your product prices are in. Shown on every price on the site, and used to match Sham Cash
+            transfers (SYP, USD or EUR).
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Input
             value={state.currencyLabel}
-            onChange={(e) => patch('currencyLabel', e.target.value)}
+            onChange={(e) => patch('currencyLabel', e.target.value.toUpperCase().slice(0, 8))}
             placeholder="e.g. SYP, USD, EUR"
             className="max-w-[200px]"
           />
@@ -361,6 +364,9 @@ function PaymentsTab() {
         enabled={state.bankEnabled}
         onToggle={(v) => patch('bankEnabled', v)}
       >
+        {state.bankEnabled && !state.bankAccountNumber.trim() && !state.bankIban.trim() && (
+          <MissingDetails text="Add an account number or IBAN — until then customers won't see this method." />
+        )}
         <Field label="Bank name"><Input value={state.bankName} onChange={(e) => patch('bankName', e.target.value)} /></Field>
         <Field label="Account holder"><Input value={state.bankAccountHolder} onChange={(e) => patch('bankAccountHolder', e.target.value)} /></Field>
         <Field label="Account number"><Input value={state.bankAccountNumber} onChange={(e) => patch('bankAccountNumber', e.target.value)} /></Field>
@@ -370,11 +376,17 @@ function PaymentsTab() {
       <PaymentMethodCard
         icon={<Smartphone className="h-5 w-5" />}
         title="Sham Cash"
-        description="Customer pays via Sham Cash wallet, then uploads a screenshot."
+        description="Customer sends to your Sham Cash wallet with the order reference in the note. With the Sham Cash API connected, payments are confirmed automatically."
         enabled={state.shamCashEnabled}
         onToggle={(v) => patch('shamCashEnabled', v)}
       >
-        <Field label="Sham Cash phone number"><Input value={state.shamCashNumber} onChange={(e) => patch('shamCashNumber', e.target.value)} placeholder="+963 9XX XXX XXX" /></Field>
+        {state.shamCashEnabled && !state.shamCashNumber.trim() && (
+          <MissingDetails text="Add your Sham Cash account number — until then customers won't see this method." />
+        )}
+        <Field label="Sham Cash account number / address (shown to customers)">
+          <Input value={state.shamCashNumber} onChange={(e) => patch('shamCashNumber', e.target.value)} />
+        </Field>
+        <ShamCashApiStatus onUseAddress={(addr) => patch('shamCashNumber', addr)} />
       </PaymentMethodCard>
 
       <PaymentMethodCard
@@ -384,6 +396,9 @@ function PaymentsTab() {
         enabled={state.syriatelCashEnabled}
         onToggle={(v) => patch('syriatelCashEnabled', v)}
       >
+        {state.syriatelCashEnabled && !state.syriatelCashNumber.trim() && (
+          <MissingDetails text="Add your Syriatel Cash number — until then customers won't see this method." />
+        )}
         <Field label="Syriatel Cash phone number"><Input value={state.syriatelCashNumber} onChange={(e) => patch('syriatelCashNumber', e.target.value)} placeholder="+963 9XX XXX XXX" /></Field>
       </PaymentMethodCard>
 
@@ -404,6 +419,74 @@ function PaymentsTab() {
           {saving ? 'Saving…' : 'Save payment settings'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function MissingDetails({ text }: { text: string }) {
+  return <p className="text-xs font-semibold text-destructive border-[2px] border-destructive p-2">{text}</p>;
+}
+
+type ShamCashStatus = {
+  configured: boolean;
+  ok: boolean;
+  code?: string;
+  message?: string;
+  accounts?: { id: string; name: string; address: string | null; status: string; subscriptionExpiresAt: string | null }[];
+};
+
+/** "Test connection" for the Sham Cash API (keys live in server env vars). */
+function ShamCashApiStatus({ onUseAddress }: { onUseAddress: (address: string) => void }) {
+  const [status, setStatus] = useState<ShamCashStatus | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  async function test() {
+    setTesting(true);
+    try {
+      const res = await fetch('/api/admin/shamcash/status', { cache: 'no-store' });
+      setStatus(await res.json());
+    } catch {
+      setStatus({ configured: false, ok: false, message: 'Could not reach the server.' });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="border-[2px] border-foreground/30 p-3 space-y-2 text-xs">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <strong className="font-headline uppercase tracking-wider text-[10px]">Automatic verification (Sham Cash API)</strong>
+        <Button type="button" size="sm" variant="outline" onClick={test} disabled={testing}>
+          {testing ? 'Testing…' : 'Test connection'}
+        </Button>
+      </div>
+      {!status && (
+        <p className="text-muted-foreground">
+          Needs SHAMCASH_BASE_URL and SHAMCASH_SECRET_KEY in the server environment. Press “Test connection” to check.
+        </p>
+      )}
+      {status && (
+        <div className="space-y-1">
+          <p className={status.ok ? 'text-[hsl(var(--pixel-green))] font-semibold' : 'text-destructive font-semibold'}>
+            {status.ok ? 'Connected — payments will be confirmed automatically.' : status.configured ? 'Connection problem' : 'Not configured'}
+          </p>
+          {status.message && <p>{status.code ? `${status.code}: ` : ''}{status.message}</p>}
+          {status.accounts?.map((a) => (
+            <div key={a.id} className="flex items-center justify-between gap-2 flex-wrap border-t pt-1">
+              <span>
+                {a.name || a.id} — {a.status}
+                {a.subscriptionExpiresAt ? ` (subscription until ${new Date(a.subscriptionExpiresAt).toLocaleDateString()})` : ''}
+                {a.address ? ` — ${a.address}` : ''}
+              </span>
+              {a.address && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => onUseAddress(a.address!)}>
+                  Use this address
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

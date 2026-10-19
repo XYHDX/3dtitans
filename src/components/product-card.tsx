@@ -1,5 +1,6 @@
 'use client';
 
+import { useCurrency } from '@/hooks/use-currency';
 import type { Product } from '@/lib/types';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -18,6 +19,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const { format: formatPrice } = useCurrency();
   // Real data only — no fake fallbacks. New products show 0 ratings honestly.
   const rating = product.rating ?? 0;
   const reviewCount = product.reviewCount ?? 0;
@@ -107,7 +109,7 @@ export function ProductCard({ product }: ProductCardProps) {
       </CardContent>
       <CardFooter className="p-4 pt-0">
         <div className="flex justify-between items-center w-full">
-            <p className="font-headline text-base">${product.price.toFixed(2)}</p>
+            <p className="font-headline text-base">{formatPrice(product.price)}</p>
             <Button variant="default" size="sm" onClick={handleAddToCart}>
                 <ShoppingCart className="h-4 w-4 mr-1" />
                 {t('productCard.addSr')}

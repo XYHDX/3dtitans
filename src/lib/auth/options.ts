@@ -4,30 +4,10 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
+import { rateLimitByKey } from '@/lib/rate-limit';
 
 const googleEnabled =
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
-
-/**
- * Bootstrap-only seed accounts. These are NOT a backdoor — they auto-create
- * on the user's first login attempt ONLY when the supplied password matches
- * the documented seed password exactly. After that, the row in the database
- * is the source of truth: subsequent logins go through bcrypt against the
- * stored hash like any other account.
- *
- * Change these passwords by logging in once, then using "Forgot password" to
- * set a real password. The seed strings here will stop mattering after that.
- */
-const seedUsers: Record<
-  string,
-  { name: string; password: string; role: 'admin' | 'store-owner' | 'user' }
-> = {
-  'admin@3dtitans.com':       { name: 'Admin Titan',   password: 'admin123', role: 'admin' },
-  'yahyademeriah@gmail.com':  { name: 'Yahya Demeriah', password: 'admin123', role: 'admin' },
-  'owner@3dtitans.com':       { name: 'Store Owner',   password: 'owner123', role: 'store-owner' },
-  'aboude.murad@gmail.com':   { name: 'Aboude Murad',  password: 'owner123', role: 'store-owner' },
-  'user@3dtitans.com':        { name: 'Regular User',  password: 'user123',  role: 'user' },
-};
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -57,6 +37,11 @@ export const authOptions: NextAuthOptions = {
         const email = credentials.email.toLowerCase().trim();
         const password = credentials.password;
 
+        // Brute-force protection: cap attempts per email address.
+        if (!rateLimitByKey(`login:${email}`, { windowMs: 15 * 60 * 1000, max: 10 }).ok) {
+          return null;
+        }
+
         let user: any = null;
         try {
           user = await prisma.user.findUnique({ where: { email } });
@@ -66,32 +51,10 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // Bootstrap path — create the seed user ONLY if the supplied password
-        // matches the seed password exactly. This lets the very first admin
-        // login succeed on a fresh DB without checking in pre-hashed passwords.
-        // After this one-time create, the password lives in the DB hash and
-        // can be changed via the normal forgot-password flow.
-        if (!user) {
-          const seed = seedUsers[email];
-          if (!seed) return null;          // unknown email → fail
-          if (password !== seed.password) return null;  // wrong password → fail
-
-          try {
-            const passwordHash = await bcrypt.hash(seed.password, 10);
-            user = await prisma.user.create({
-              data: {
-                email,
-                name: seed.name,
-                passwordHash,
-                role: seed.role,
-                emailVerified: new Date(),
-              },
-            });
-          } catch (err) {
-            console.error('Seed bootstrap create failed:', err);
-            return null;
-          }
-        }
+        // Unknown email → fail. There are no built-in/seed accounts: the first
+        // admin is promoted manually in the database:
+        //   UPDATE "User" SET role = 'admin' WHERE email = 'you@example.com';
+        if (!user) return null;
 
         // Account exists but has no password hash → registered via Google OAuth.
         // They must use the Google button, not the password form. Fail closed.
@@ -123,7 +86,9 @@ export const authOptions: NextAuthOptions = {
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID as string,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-            allowDangerousEmailAccountLinking: true,
+            // Never auto-link a Google login onto an existing password account —
+            // that would let whoever controls the Google identity take it over.
+            allowDangerousEmailAccountLinking: false,
           }),
         ]
       : []),

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { usePaymentSettings, type PaymentMethod } from '@/hooks/use-payment-settings';
 import { ProofUploader } from '@/components/proof-uploader';
+import { formatMoney, orderReference } from '@/lib/payments/common';
 
 type OrderDetails = {
   id: string;
@@ -110,7 +111,18 @@ function SuccessContent() {
         </div>
         <h1 className="font-headline text-3xl md:text-4xl">Order Placed!</h1>
         <p className="text-muted-foreground mt-3 text-sm">
-          Order <span className="font-mono font-bold">#{order.id.slice(-8).toUpperCase()}</span> &middot; {paid ? 'Paid' : 'Awaiting payment'}
+          Order <span className="font-mono font-bold">{orderReference(order.id)}</span> &middot;{' '}
+          {paid
+            ? 'Paid'
+            : order.paymentStatus === 'verifying'
+            ? 'Payment under review'
+            : order.paymentStatus === 'refunded'
+            ? 'Refunded'
+            : order.paymentStatus === 'failed'
+            ? 'Payment not confirmed'
+            : method === 'cod'
+            ? 'Pay on delivery'
+            : 'Awaiting payment'}
         </p>
       </div>
 
@@ -124,19 +136,23 @@ function SuccessContent() {
             {order.items.map((item, i) => (
               <div key={i} className="flex justify-between">
                 <span>{item.name} × {item.quantity}</span>
-                <span className="font-mono">{currency} {(item.price * item.quantity).toFixed(2)}</span>
+                <span className="font-mono">{formatMoney(item.price * item.quantity, currency)}</span>
               </div>
             ))}
           </div>
           <div className="border-t-[3px] border-foreground pt-3 flex justify-between font-headline text-base">
             <span>TOTAL</span>
-            <span>{currency} {order.totalAmount.toFixed(2)}</span>
+            <span>{formatMoney(order.totalAmount, currency)}</span>
           </div>
         </CardContent>
       </Card>
 
       {/* Method-specific payment instructions */}
-      <PaymentInstructions order={order} currency={currency} />
+      <PaymentInstructions
+        order={order}
+        currency={currency}
+        onStatusChange={(paymentStatus) => setOrder((o) => (o ? { ...o, paymentStatus } : o))}
+      />
 
       {/* Shipping confirmation */}
       <Card className="mt-6">
@@ -157,10 +173,37 @@ function SuccessContent() {
   );
 }
 
-function PaymentInstructions({ order, currency }: { order: OrderDetails; currency: string }) {
+function PaymentInstructions({
+  order,
+  currency,
+  onStatusChange,
+}: {
+  order: OrderDetails;
+  currency: string;
+  onStatusChange: (status: 'paid' | 'verifying') => void;
+}) {
   const { settings } = usePaymentSettings();
+  const { toast } = useToast();
+  const [payingCard, setPayingCard] = useState(false);
   const method = order.paymentMethod;
   const paid = order.paymentStatus === 'paid';
+  const ref = orderReference(order.id);
+  const amount = formatMoney(order.totalAmount, currency);
+  const failedNote =
+    order.paymentStatus === 'failed' ? (
+      <p className="text-xs text-destructive border-[2px] border-destructive p-2">
+        We couldn&rsquo;t confirm your previous payment. Please check the amount and reference, then submit again.
+      </p>
+    ) : null;
+
+  if (order.paymentStatus === 'refunded') {
+    return (
+      <Card>
+        <CardHeader><CardTitle className="text-xl font-headline">Payment Refunded</CardTitle></CardHeader>
+        <CardContent className="text-sm">This order was cancelled and your payment refunded.</CardContent>
+      </Card>
+    );
+  }
 
   if (paid) {
     return (
@@ -184,7 +227,7 @@ function PaymentInstructions({ order, currency }: { order: OrderDetails; currenc
           <CardTitle className="text-xl font-headline flex items-center gap-3">
             <Banknote className="h-5 w-5" /> Cash on Delivery
           </CardTitle>
-          <CardDescription>Pay {currency} {order.totalAmount.toFixed(2)} in cash when your order arrives.</CardDescription>
+          <CardDescription>Pay {amount} in cash when your order arrives.</CardDescription>
         </CardHeader>
         <CardContent className="text-sm space-y-2">
           <p>Please have the exact amount ready for our courier.</p>
@@ -202,18 +245,19 @@ function PaymentInstructions({ order, currency }: { order: OrderDetails; currenc
           <CardTitle className="text-xl font-headline flex items-center gap-3">
             <Building2 className="h-5 w-5" /> Bank Transfer Details
           </CardTitle>
-          <CardDescription>Transfer {currency} {order.totalAmount.toFixed(2)} to the account below.</CardDescription>
+          <CardDescription>Transfer {amount} to the account below.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <CopyableField label="Bank" value={settings.bankName} />
           <CopyableField label="Account holder" value={settings.bankAccountHolder} />
           <CopyableField label="Account number" value={settings.bankAccountNumber} />
           <CopyableField label="IBAN" value={settings.bankIban} />
-          <CopyableField label="Reference (use this)" value={order.id.slice(-8).toUpperCase()} />
+          <CopyableField label="Reference (use this)" value={ref} />
           <p className="text-xs text-muted-foreground mt-2">
             Put the reference in the transfer description so we can match it to your order. Once we see the transfer, we&rsquo;ll mark it paid and start processing.
           </p>
-          <ProofUploader orderId={order.id} />
+          {failedNote}
+          <ProofUploader orderId={order.id} method={method} paymentStatus={order.paymentStatus} onStatusChange={onStatusChange} />
         </CardContent>
       </Card>
     );
@@ -229,12 +273,27 @@ function PaymentInstructions({ order, currency }: { order: OrderDetails; currenc
           <CardTitle className="text-xl font-headline flex items-center gap-3">
             <Smartphone className="h-5 w-5" /> {name} Payment
           </CardTitle>
-          <CardDescription>Send {currency} {order.totalAmount.toFixed(2)} to the number below, then upload a screenshot.</CardDescription>
+          <CardDescription>
+            Send exactly {amount} to the number below{isSham && settings.shamCashAutoVerify ? '' : ', then upload a screenshot'}.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <CopyableField label={`${name} number`} value={number} />
-          <CopyableField label="Reference (use this)" value={order.id.slice(-8).toUpperCase()} />
-          <ProofUploader orderId={order.id} />
+          <CopyableField label="Amount" value={amount} />
+          <CopyableField label="Write this in the transfer note" value={ref} />
+          <p className="text-xs text-muted-foreground">
+            {isSham && settings.shamCashAutoVerify
+              ? 'Put the reference in the note of your Sham Cash transfer — that is how we match your payment automatically. Then press “check now”.'
+              : 'Put the reference in the transfer note so we can match the payment to your order.'}
+          </p>
+          {failedNote}
+          <ProofUploader
+            orderId={order.id}
+            method={method}
+            autoVerify={settings.shamCashAutoVerify}
+            paymentStatus={order.paymentStatus}
+            onStatusChange={onStatusChange}
+          />
         </CardContent>
       </Card>
     );
@@ -248,8 +307,37 @@ function PaymentInstructions({ order, currency }: { order: OrderDetails; currenc
             <CreditCard className="h-5 w-5" /> Card Payment
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm">
-          <p>If you weren&rsquo;t redirected to Stripe, payment may not have been completed. Please check your card statement or contact support.</p>
+        <CardContent className="text-sm space-y-3">
+          {order.paymentStatus === 'verifying' ? (
+            <p>Your card payment is being processed. We&rsquo;ll email you once it&rsquo;s confirmed.</p>
+          ) : (
+            <>
+              <p>This order hasn&rsquo;t been paid yet.</p>
+              <Button
+                disabled={payingCard}
+                onClick={async () => {
+                  setPayingCard(true);
+                  try {
+                    const res = await fetch('/api/payments/stripe/checkout', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ orderId: order.id }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.url) {
+                      window.location.href = data.url;
+                      return;
+                    }
+                    toast({ variant: 'destructive', title: 'Card payment unavailable', description: data.error || 'Please try again later.' });
+                  } finally {
+                    setPayingCard(false);
+                  }
+                }}
+              >
+                {payingCard ? 'Redirecting…' : `Pay ${amount} by card`}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     );

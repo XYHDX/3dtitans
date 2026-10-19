@@ -1,4 +1,5 @@
 'use client';
+import { useCurrency } from '@/hooks/use-currency';
 import type { Product } from '@/lib/types';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
@@ -20,6 +21,7 @@ import { ProductReviews } from '@/components/product-reviews';
 
 // eslint-disable-next-line
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
+  const { format: formatPrice } = useCurrency();
   const { id } = params;
   // SECURITY: fetch ONLY the product being viewed. Previously this used
   // useProducts() which downloaded the entire catalog and filtered client-side
@@ -286,7 +288,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             <Separator className="my-6" />
 
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
-              <p className="text-4xl font-bold">${product.price.toFixed(2)}</p>
+              <p className="text-4xl font-bold">{formatPrice(product.price)}</p>
 
               <div className="flex flex-wrap items-center gap-4 justify-start sm:justify-end">
                 <div className="flex items-center gap-2">

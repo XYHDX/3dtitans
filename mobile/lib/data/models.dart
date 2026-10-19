@@ -450,7 +450,7 @@ class PaymentSettings {
     this.bankAccountHolder = '',
     this.shamCashNumber = '',
     this.syriatelCashNumber = '',
-    this.currencyLabel = 'USD',
+    this.currencyLabel = 'SYP',
   });
 
   final bool codEnabled;
@@ -493,7 +493,7 @@ class PaymentSettings {
       bankAccountHolder: s('bankAccountHolder'),
       shamCashNumber: s('shamCashNumber'),
       syriatelCashNumber: s('syriatelCashNumber'),
-      currencyLabel: s('currencyLabel').isEmpty ? 'USD' : s('currencyLabel'),
+      currencyLabel: s('currencyLabel').isEmpty ? 'SYP' : s('currencyLabel'),
     );
   }
 }
@@ -618,8 +618,10 @@ class Order {
   bool get canRequestCancellation =>
       !status.isFinal && status != OrderStatus.cancellationRequested;
 
-  /// Short id shown to customers (`#A1B2C3`).
-  String get shortId => id.length > 6 ? id.substring(id.length - 6).toUpperCase() : id.toUpperCase();
+  /// Order reference shown to customers (`3DT-AB12CD34`). Must match the
+  /// website (src/lib/payments/common.ts): customers put it in the transfer
+  /// note so Sham Cash payments are matched automatically.
+  String get shortId => '3DT-${(id.length > 8 ? id.substring(id.length - 8) : id).toUpperCase()}';
 
   factory Order.fromJson(Map<String, dynamic> j) {
     final shippingRaw = j['shippingAddress'];

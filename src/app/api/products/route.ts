@@ -7,6 +7,13 @@ import { NextResponse } from 'next/server';
 // never be pre-rendered at build time.
 export const dynamic = 'force-dynamic';
 
+/** Price must be a positive number with at most 2 decimals. Returns the number or null. */
+function parsePrice(raw: unknown): number | null {
+  const n = typeof raw === 'string' ? Number(raw.trim()) : Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) return null;
+  return Math.round(n * 100) / 100;
+}
+
 function mapProduct(product: any) {
   let gallery: string[] = [];
   if (product.imageGallery) {
@@ -173,6 +180,10 @@ export async function POST(req: Request) {
     if (!name || !category || !price || !imageUrl) {
       return NextResponse.json({ error: 'Name, category, price, and imageUrl are required' }, { status: 400 });
     }
+    const validPrice = parsePrice(price);
+    if (validPrice === null) {
+      return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+    }
 
     if (storeId) {
       const store = await prisma.store.findUnique({ where: { id: storeId } });
@@ -189,7 +200,7 @@ export async function POST(req: Request) {
       data: {
         name,
         category,
-        price,
+        price: validPrice,
         description: description || '',
         tags: Array.isArray(tags) ? tags.join(',') : tags || '',
         imageUrl,

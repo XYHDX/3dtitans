@@ -1,76 +1,46 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import { rateLimitByKey } from '@/lib/rate-limit';
+import { mapOrder } from '@/lib/orders/map';
+import { getPaymentSettings } from '@/lib/payments/settings';
+import { PAYMENT_METHODS, type PaymentMethodId } from '@/lib/payments/common';
+import { notifyOrderPlaced } from '@/lib/email';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
-function mapOrder(order: any) {
-  return {
-    id: order.id,
-    userId: order.userId || '',
-    orderDate: order.createdAt,
-    updatedAt: order.updatedAt,
-    totalAmount: Number(order.totalAmount),
-    status: order.status as any,
-    items: order.items.map((item: any) => ({
-      productId: item.productId || '',
-      name: item.name,
-      quantity: item.quantity,
-      price: Number(item.price),
-      imageUrl: item.imageUrl || '',
-    })),
-    productIds: order.items.map((i: any) => i.productId || ''),
-    shippingAddress: {
-      fullName: order.shippingName,
-      addressLine1: order.shippingAddress1,
-      city: order.shippingCity,
-      postalCode: order.shippingPostalCode,
-      country: order.shippingCountry,
-    },
-    phoneNumber: order.phoneNumber,
-    customerEmail: order.customerEmail || '',
-    notes: (order as any).notes || '',
-    predictedFinishDate: order.predictedFinishAt || undefined,
-    isPrioritized: order.isPrioritized || false,
-    assignedAdminIds: order.assignments?.map((a: any) => a.ownerId) || [],
-  };
-}
+export const dynamic = 'force-dynamic';
 
-async function ensureOrderNotesColumn() {
-  try {
-    await prisma.$executeRawUnsafe('ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "notes" TEXT;');
-    return true;
-  } catch (error) {
-    console.error('Failed to ensure Order.notes column', error);
-    return false;
-  }
-}
+const orderSelect = {
+  id: true,
+  userId: true,
+  createdAt: true,
+  updatedAt: true,
+  totalAmount: true,
+  status: true,
+  shippingName: true,
+  shippingAddress1: true,
+  shippingCity: true,
+  shippingPostalCode: true,
+  shippingCountry: true,
+  phoneNumber: true,
+  customerEmail: true,
+  notes: true,
+  predictedFinishAt: true,
+  isPrioritized: true,
+  paymentMethod: true,
+  paymentStatus: true,
+  paymentReference: true,
+  paymentProofUrl: true,
+  paidAt: true,
+  items: { select: { productId: true, name: true, quantity: true, price: true, imageUrl: true } },
+  assignments: { select: { ownerId: true, ownerEmail: true } },
+} as const;
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user;
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const baseSelect = {
-      id: true,
-      userId: true,
-      createdAt: true,
-      updatedAt: true,
-      totalAmount: true,
-      status: true,
-      shippingName: true,
-      shippingAddress1: true,
-      shippingCity: true,
-      shippingPostalCode: true,
-      shippingCountry: true,
-      phoneNumber: true,
-      customerEmail: true,
-      predictedFinishAt: true,
-      isPrioritized: true,
-      // notes intentionally omitted to tolerate databases missing this column.
-      items: { select: { productId: true, name: true, quantity: true, price: true, imageUrl: true } },
-      assignments: { select: { ownerId: true, ownerEmail: true, owner: { select: { id: true } } } },
-    };
+    if (!user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Auto-pool orders older than 24h that are still awaiting acceptance and assigned.
     // Restrict to admin view to avoid side-effects on every store-owner request.
@@ -94,51 +64,41 @@ export async function GET() {
       }
     }
 
-    let orders;
-    const fetchOrders = async () => {
-      const userEmail = (user.email || '').toLowerCase();
-      if (user.role === 'admin') {
-        return prisma.order.findMany({
-          orderBy: { createdAt: 'desc' },
-          select: baseSelect,
-        });
-      }
-      if (user.role === 'store-owner') {
-        return prisma.order.findMany({
-          where: {
-            OR: [
-              { assignments: { some: { ownerId: user.id } } },
-              { assignments: { some: { ownerEmail: user.email || '' } } },
-              { status: 'Pooled' },
-            ],
-          },
-          orderBy: { createdAt: 'desc' },
-          select: baseSelect,
-        });
-      }
-      const userFilter = [
-        { userId: user.id },
-        userEmail ? { customerEmail: userEmail } : undefined,
-      ].filter(Boolean) as any[];
-      return prisma.order.findMany({
-        where: { OR: userFilter },
-        orderBy: { createdAt: 'desc' },
-        select: baseSelect,
-      });
-    };
-
-    try {
-      orders = await fetchOrders();
-    } catch (fetchError) {
-      console.error('Orders fetch failed with relations, retrying without includes', fetchError);
-      // Fallback without relation includes to avoid breaking the endpoint due to bad data.
-      orders = await prisma.order.findMany({
-        orderBy: { createdAt: 'desc' },
-        select: baseSelect,
-      });
+    // NOTE: there is deliberately no "fetch everything" fallback here — on any
+    // error we return 500 rather than risk showing one user another's orders.
+    if (user.role === 'admin') {
+      const orders = await prisma.order.findMany({ orderBy: { createdAt: 'desc' }, select: orderSelect });
+      return NextResponse.json({ orders: orders.map((o) => mapOrder(o, 'admin')) });
     }
 
-    return NextResponse.json({ orders: orders.map(mapOrder) });
+    if (user.role === 'store-owner') {
+      const orders = await prisma.order.findMany({
+        where: {
+          OR: [
+            { assignments: { some: { ownerId: user.id } } },
+            ...(user.email ? [{ assignments: { some: { ownerEmail: user.email } } }] : []),
+            { status: 'Pooled' },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: orderSelect,
+      });
+      return NextResponse.json({ orders: orders.map((o) => mapOrder(o, 'owner')) });
+    }
+
+    const userEmail = (user.email || '').toLowerCase();
+    const orders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { userId: user.id },
+          // Legacy orders placed before accounts were linked to orders.
+          ...(userEmail ? [{ userId: null, customerEmail: { equals: userEmail, mode: 'insensitive' as const } }] : []),
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: orderSelect,
+    });
+    return NextResponse.json({ orders: orders.map((o) => mapOrder(o, 'customer')) });
   } catch (error: any) {
     // Don't leak Prisma error codes or messages to the client — those can
     // hint at schema layout. Log the real error, return a generic message.
@@ -147,23 +107,28 @@ export async function GET() {
   }
 }
 
+const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user;
-    if (user?.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
+    if (!user?.id) return NextResponse.json({ error: 'Please log in to place an order.' }, { status: 401 });
+    if (user.role === 'store-owner') return NextResponse.json({ error: 'Store owners cannot place orders' }, { status: 403 });
 
-    const body = await req.json();
+    if (!rateLimitByKey(`orders:${user.id}`, { windowMs: 10 * 60 * 1000, max: 20 }).ok) {
+      return NextResponse.json({ error: 'Too many orders in a short time. Please wait a few minutes.' }, { status: 429 });
+    }
+
+    const body = await req.json().catch(() => ({}));
     // Client sends ONLY {productId, quantity} per item + idempotencyKey + shipping
     // info. Everything else (price, name, image, total, assignees) is server-derived
     // from the database. Never trust the client with prices.
-    const { items, shippingAddress, phoneNumber, customerEmail, isPrioritized, notes, paymentMethod, idempotencyKey } = body;
+    const { items, shippingAddress, phoneNumber, notes, paymentMethod, idempotencyKey } = body || {};
 
     // -------------------------------------------------------------------
-    // 1. IDEMPOTENCY KEY — strictly required. No fallback, no exceptions.
-    //    Without one, double-clicks and network retries create duplicates,
-    //    which is a real money/inventory problem. The Phase 6 migration is
-    //    a hard prerequisite for placing orders.
+    // 1. IDEMPOTENCY KEY — strictly required (prevents duplicate orders from
+    //    double-clicks and network retries).
     // -------------------------------------------------------------------
     if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
       return NextResponse.json(
@@ -172,57 +137,69 @@ export async function POST(req: Request) {
       );
     }
 
-    try {
-      const existing = await prisma.order.findUnique({
-        where: { idempotencyKey } as any,
-        include: { items: true, assignments: true },
-      });
-      if (existing) {
-        // Only the original placer (or matching email) can claim the duplicate.
-        // Different user with the same key (effectively impossible with UUIDs)
-        // → conflict, never leak someone else's order.
-        const sameUser =
-          (!!user?.id && existing.userId === user.id) ||
-          (!!user?.email && !!existing.customerEmail &&
-            existing.customerEmail.toLowerCase() === user.email.toLowerCase());
-        if (sameUser) {
-          return NextResponse.json({ order: mapOrder(existing) });
-        }
-        return NextResponse.json({ error: 'Idempotency key conflict' }, { status: 409 });
+    const existing = await prisma.order.findUnique({
+      where: { idempotencyKey },
+      select: orderSelect,
+    });
+    if (existing) {
+      // Only the original placer can claim the duplicate — never leak someone else's order.
+      if (existing.userId === user.id) {
+        return NextResponse.json({ order: mapOrder(existing, 'customer') });
       }
-    } catch (e: any) {
-      // Most likely the Phase 6 migration hasn't been applied yet.
-      console.error('Idempotency lookup failed — Phase 6 migration may be missing:', e?.message);
-      return NextResponse.json(
-        { error: 'Order system not initialized. Admin: apply the Phase 6 SQL migration.' },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: 'Idempotency key conflict' }, { status: 409 });
     }
 
     // -------------------------------------------------------------------
-    // 2. Other basic validations
+    // 2. Payment method — must be one the store currently accepts AND has
+    //    configured (e.g. Sham Cash needs a wallet number).
     // -------------------------------------------------------------------
-    const validMethods = ['cod', 'bank_transfer', 'sham_cash', 'syriatel_cash', 'stripe'];
-    if (paymentMethod && !validMethods.includes(paymentMethod)) {
-      return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
+    const paymentSettings = await getPaymentSettings();
+    if (!PAYMENT_METHODS.includes(paymentMethod)) {
+      return NextResponse.json({ error: 'Please choose a payment method.' }, { status: 400 });
     }
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: 'Items are required' }, { status: 400 });
+    if (!paymentSettings.available[paymentMethod as PaymentMethodId]) {
+      return NextResponse.json({ error: 'This payment method is not available right now.' }, { status: 400 });
     }
-    if (!shippingAddress?.fullName || !shippingAddress?.addressLine1 || !shippingAddress?.city || !shippingAddress?.postalCode || !shippingAddress?.country) {
+
+    // -------------------------------------------------------------------
+    // 3. Shipping / contact validation
+    // -------------------------------------------------------------------
+    const ship = {
+      fullName: str(shippingAddress?.fullName, 120),
+      addressLine1: str(shippingAddress?.addressLine1, 300),
+      city: str(shippingAddress?.city, 100),
+      postalCode: str(shippingAddress?.postalCode, 20),
+      country: str(shippingAddress?.country, 100),
+    };
+    if (!ship.fullName || !ship.addressLine1 || !ship.city || !ship.postalCode || !ship.country) {
       return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
     }
+    // Accept Arabic-Indic / Persian digits too (٠٩٣… → 093…).
+    const phone = str(phoneNumber, 30).replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) =>
+      String(d.charCodeAt(0) & 0xf)
+    );
+    if (!/^\+?[0-9\s\-()]{7,30}$/.test(phone)) {
+      return NextResponse.json({ error: 'Please enter a valid phone number.' }, { status: 400 });
+    }
+    const cleanNotes = str(notes, 500);
 
     // -------------------------------------------------------------------
-    // 3. AUTHORITATIVE PRICING — fetch every product from the database.
-    //    The client provided only {productId, quantity}. We ignore any
-    //    `price`, `name`, or `imageUrl` from the request body so a malicious
-    //    client cannot pay $0.01 for a $99 product.
+    // 4. AUTHORITATIVE PRICING — fetch every product from the database and
+    //    ignore any price/name/image sent by the client.
     // -------------------------------------------------------------------
-    const requestedIds: string[] = items
-      .map((it: any) => String(it?.productId || ''))
-      .filter((id: string) => id.length > 0);
-
+    if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
+      return NextResponse.json({ error: 'Items are required' }, { status: 400 });
+    }
+    // Merge duplicate lines for the same product and clamp quantities.
+    const qtyById = new Map<string, number>();
+    for (const it of items) {
+      const id = String(it?.productId || '');
+      if (!id) continue;
+      const raw = Number(it?.quantity);
+      const q = Number.isFinite(raw) ? Math.floor(raw) : 1;
+      qtyById.set(id, Math.min(99, (qtyById.get(id) || 0) + Math.max(1, q)));
+    }
+    const requestedIds = Array.from(qtyById.keys());
     if (requestedIds.length === 0) {
       return NextResponse.json({ error: 'No valid product IDs in cart' }, { status: 400 });
     }
@@ -232,8 +209,6 @@ export async function POST(req: Request) {
       select: { id: true, name: true, price: true, imageUrl: true, uploaderId: true },
     });
     const productById = new Map(dbProducts.map((p) => [p.id, p]));
-
-    // Reject if any cart item references a product that no longer exists
     const missingIds = requestedIds.filter((id) => !productById.has(id));
     if (missingIds.length > 0) {
       return NextResponse.json(
@@ -242,37 +217,31 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build authoritative line items — server's price wins, quantity is clamped
-    type LineItem = { productId: string; name: string; quantity: number; price: number; imageUrl: string };
-    const lineItems: LineItem[] = items
-      .map((it: any) => {
-        const product = productById.get(String(it.productId))!;
-        const rawQty = Number(it?.quantity);
-        const quantity = Math.max(1, Math.min(99, Number.isFinite(rawQty) ? Math.floor(rawQty) : 1));
-        return {
-          productId: product.id,
-          name: product.name,
-          quantity,
-          price: Number(product.price),
-          imageUrl: product.imageUrl || '',
-        };
-      });
+    const lineItems = requestedIds.map((id) => {
+      const product = productById.get(id)!;
+      return {
+        productId: product.id,
+        name: product.name,
+        quantity: qtyById.get(id)!,
+        price: Number(product.price),
+        imageUrl: product.imageUrl || '',
+      };
+    });
+    if (lineItems.some((it) => !Number.isFinite(it.price) || it.price <= 0)) {
+      return NextResponse.json({ error: 'An item in your cart has an invalid price. Please contact support.' }, { status: 400 });
+    }
 
-    // Server computes the total — client never sends one
-    const computedTotal = lineItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
+    // Server computes the total (rounded to cents) — client never sends one.
+    const computedTotal = Math.round(lineItems.reduce((sum, it) => sum + it.price * it.quantity, 0) * 100) / 100;
     if (!Number.isFinite(computedTotal) || computedTotal <= 0) {
       return NextResponse.json({ error: 'Computed order total is invalid' }, { status: 400 });
     }
 
     // -------------------------------------------------------------------
-    // 4. Assignees — derived from the SAME product set we just validated.
+    // 5. Assignees — derived from the SAME product set we just validated.
     // -------------------------------------------------------------------
     const assignees = Array.from(
-      new Set(
-        dbProducts
-          .map((p) => p.uploaderId)
-          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-      )
+      new Set(dbProducts.map((p) => p.uploaderId).filter((id): id is string => !!id && id.trim().length > 0))
     );
     if (!assignees.length) {
       return NextResponse.json(
@@ -281,90 +250,44 @@ export async function POST(req: Request) {
       );
     }
 
-    let userId: string | undefined;
-    if (user?.id) {
-      try {
-        const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-        userId = dbUser?.id || undefined;
-      } catch (userLookupError) {
-        console.error('Order user lookup failed', userLookupError);
-      }
-    }
-
-    const orderData: any = {
-      userId,
+    const orderData = {
+      userId: user.id,
       status: 'AwaitingAcceptance',
-      totalAmount: computedTotal,    // ← server-computed, NOT from client body
-      shippingName: shippingAddress.fullName,
-      shippingAddress1: shippingAddress.addressLine1,
-      shippingCity: shippingAddress.city,
-      shippingPostalCode: shippingAddress.postalCode,
-      shippingCountry: shippingAddress.country,
-      phoneNumber,
-      customerEmail: customerEmail || user?.email,
-      isPrioritized: !!isPrioritized,
-      notes: typeof notes === 'string' ? notes : '',
-      paymentMethod: paymentMethod || 'cod',
+      totalAmount: computedTotal,
+      shippingName: ship.fullName,
+      shippingAddress1: ship.addressLine1,
+      shippingCity: ship.city,
+      shippingPostalCode: ship.postalCode,
+      shippingCountry: ship.country,
+      phoneNumber: phone,
+      // Always the account's own email: order emails and access checks key off it,
+      // so it must not be something the client can set to a stranger's address.
+      customerEmail: (user.email || '').toLowerCase() || null,
+      isPrioritized: false,
+      notes: cleanNotes,
+      paymentMethod,
       paymentStatus: 'pending',
-      idempotencyKey,                // required, validated above
-      items: {
-        create: lineItems.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,        // ← server's price from the DB
-          imageUrl: item.imageUrl,
-        })),
-      },
-      assignments: assignees.length
-        ? {
-            create: assignees.map((ownerId: string) => ({
-              ownerId,
-            })),
-          }
-        : undefined,
+      idempotencyKey,
+      items: { create: lineItems },
+      assignments: { create: assignees.map((ownerId) => ({ ownerId })) },
     };
 
     let order;
     try {
-      order = await prisma.order.create({
-        data: orderData,
-        include: { items: true, assignments: true },
-      });
+      order = await prisma.order.create({ data: orderData, select: orderSelect });
     } catch (error: any) {
       // Idempotency race: two simultaneous POSTs with the same key. The DB's
-      // unique constraint rejects the loser with P2002. Fetch the winning
-      // order (which arrived a microsecond earlier) and return it.
-      if (error?.code === 'P2002' && orderData.idempotencyKey) {
-        const winner = await prisma.order.findUnique({
-          where: { idempotencyKey: orderData.idempotencyKey } as any,
-          include: { items: true, assignments: true },
-        });
-        if (winner) return NextResponse.json({ order: mapOrder(winner) });
-        throw error;
+      // unique constraint rejects the loser with P2002 — return the winner.
+      if (error?.code === 'P2002') {
+        const winner = await prisma.order.findUnique({ where: { idempotencyKey }, select: orderSelect });
+        if (winner && winner.userId === user.id) return NextResponse.json({ order: mapOrder(winner, 'customer') });
       }
-      if (error?.code === 'P2022') {
-        const ensured = await ensureOrderNotesColumn();
-        if (ensured) {
-          order = await prisma.order.create({
-            data: orderData,
-            include: { items: true, assignments: true },
-          });
-        } else {
-          throw error;
-        }
-      } else if (error?.code === 'P2003' && orderData.userId) {
-        console.warn('Order create failed with user FK, retrying without userId');
-        order = await prisma.order.create({
-          data: { ...orderData, userId: undefined },
-          include: { items: true, assignments: true },
-        });
-      } else {
-        throw error;
-      }
+      throw error;
     }
 
-    return NextResponse.json({ order: mapOrder(order) });
+    await notifyOrderPlaced(order, paymentSettings.currency);
+
+    return NextResponse.json({ order: mapOrder(order, 'customer') });
   } catch (error: any) {
     // Log the full error server-side, return a generic message to the client.
     console.error('Orders POST failed', error);

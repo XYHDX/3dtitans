@@ -105,9 +105,10 @@ void main() {
 
   group('Fmt', () {
     test('price', () {
-      expect(Fmt.price(7), r'$7.00');
-      expect(Fmt.price(2.5), r'$2.50');
-      expect(Fmt.price(19.98), r'$19.98');
+      Fmt.currency = 'SYP';
+      expect(Fmt.price(7), 'SYP 7.00');
+      expect(Fmt.price(2.5), 'SYP 2.50');
+      expect(Fmt.price(19.98), 'SYP 19.98');
     });
 
     test('categoryKey folds the site\'s inconsistent categories', () {
@@ -172,7 +173,7 @@ void _checkoutModels() {
     });
     expect(s.enabledMethods, [PaymentMethod.cod, PaymentMethod.bankTransfer]);
     expect(s.bankName, 'Bank of Syria');
-    expect(s.currencyLabel, 'USD');
+    expect(s.currencyLabel, 'SYP'); // default when the key is missing
     expect(PaymentMethod.bankTransfer.needsProof, isTrue);
     expect(PaymentMethod.cod.needsProof, isFalse);
   });
@@ -197,7 +198,7 @@ void _checkoutModels() {
     expect(o.status, OrderStatus.awaitingAcceptance);
     expect(o.itemCount, 2);
     expect(o.items.first.lineTotal, 14.5);
-    expect(o.shortId, 'ABCDEF');
+    expect(o.shortId, '3DT-78ABCDEF');
     expect(o.canRequestCancellation, isTrue);
     expect(o.shipping.summary, 'Street 1, Damascus, 0000, Syria');
   });

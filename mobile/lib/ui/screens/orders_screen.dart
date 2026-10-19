@@ -158,8 +158,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                           if (o.items.length > 4)
                             Text('+${o.items.length - 4}', style: theme.textTheme.labelMedium),
-                          const Spacer(),
-                          Text(Fmt.price(o.totalAmount), style: theme.textTheme.headlineSmall),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(Fmt.price(o.totalAmount), style: theme.textTheme.headlineSmall),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),

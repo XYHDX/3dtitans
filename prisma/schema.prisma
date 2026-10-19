@@ -189,8 +189,30 @@ model Order {
   user   User?   @relation("UserOrders", fields: [userId], references: [id])
   userId String?
 
-  items       OrderItem[]
-  assignments OrderAssignment[]
+  items               OrderItem[]
+  assignments         OrderAssignment[]
+  paymentTransactions PaymentTransaction[]
+}
+
+/// An external payment (e.g. an incoming Sham Cash transfer) that was used to
+/// pay an order. The unique (provider, externalId) pair guarantees one transfer
+/// can never be counted towards two orders.
+model PaymentTransaction {
+  id         String    @id @default(cuid())
+  provider   String    // 'sham_cash' | 'stripe' | ...
+  externalId String    // provider's transaction id
+  amount     Decimal
+  currency   String
+  senderName String?
+  note       String?
+  occurredAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  order   Order  @relation(fields: [orderId], references: [id])
+  orderId String
+
+  @@unique([provider, externalId])
+  @@index([orderId])
 }
 
 model OrderItem {

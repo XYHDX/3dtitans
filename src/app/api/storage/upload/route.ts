@@ -1,23 +1,11 @@
 import { authOptions } from '@/lib/auth/options';
 import { rateLimit } from '@/lib/rate-limit';
-import { createClient } from '@supabase/supabase-js';
+import { getStorageAdminClient } from '@/lib/supabase/server-storage';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-/**
- * Service-role Supabase client, created here on purpose: `lib/supabase/admin.ts`
- * is marked `'use server'`, and Next.js only allows async-function exports from
- * such files, so importing its client object breaks the production build.
- */
-function getAdminClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 /**
  * POST /api/storage/upload  (multipart/form-data)
@@ -39,12 +27,17 @@ const KINDS = {
     maxBytes: 25 * 1024 * 1024,
     extensions: ['.stl'],
     defaultContentType: 'model/stl',
+    // Public read so the stored links open for admins and store owners.
+    public: true,
   },
   proof: {
     bucket: 'payment-proofs',
     maxBytes: 10 * 1024 * 1024,
     extensions: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.pdf'],
     defaultContentType: 'application/octet-stream',
+    // PRIVATE: payment screenshots contain personal/financial data. Admins view
+    // them through /api/payments/proof/view, which issues short-lived signed links.
+    public: false,
   },
 } as const;
 
@@ -65,7 +58,7 @@ export async function POST(req: Request) {
   const user = session?.user;
   if (!user?.id) return NextResponse.json({ error: 'Login required' }, { status: 401 });
 
-  const supabaseAdmin = getAdminClient();
+  const supabaseAdmin = getStorageAdminClient();
   if (!supabaseAdmin) {
     return NextResponse.json(
       { error: 'File storage is not configured on the server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).' },
@@ -106,16 +99,30 @@ export async function POST(req: Request) {
   }
 
   const path = `${user.id}/${Date.now()}-${sanitizeFileName(originalName)}`;
-  const contentType: string = (entry.type as string) || spec.defaultContentType;
+  // Derive the content type from the (already validated) extension instead of
+  // trusting the browser, so nobody can store e.g. HTML disguised as an image.
+  const EXT_TYPES: Record<string, string> = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+    '.heic': 'image/heic', '.heif': 'image/heif', '.gif': 'image/gif', '.pdf': 'application/pdf',
+    '.stl': 'model/stl',
+  };
+  const ext = spec.extensions.find((e) => lowerName.endsWith(e)) || '';
+  const contentType: string = EXT_TYPES[ext] || spec.defaultContentType;
   const bytes = Buffer.from(await entry.arrayBuffer());
 
   try {
-    // Make sure the bucket exists (public read, so the links stored on orders /
-    // uploads open for admins and store owners).
+    // Make sure the bucket exists with the right visibility.
     const { data: bucket } = await supabaseAdmin.storage.getBucket(spec.bucket);
+    if (bucket && bucket.public !== spec.public) {
+      const { error: updErr } = await supabaseAdmin.storage.updateBucket(spec.bucket, {
+        public: spec.public,
+        fileSizeLimit: spec.maxBytes,
+      });
+      if (updErr) console.error('storage/upload updateBucket', updErr);
+    }
     if (!bucket) {
       const { error: createErr } = await supabaseAdmin.storage.createBucket(spec.bucket, {
-        public: true,
+        public: spec.public,
         fileSizeLimit: spec.maxBytes,
       });
       if (createErr && !/already exists/i.test(createErr.message)) {

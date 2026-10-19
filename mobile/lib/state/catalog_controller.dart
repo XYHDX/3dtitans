@@ -39,6 +39,8 @@ class CatalogController extends ChangeNotifier {
         _api.products(),
         _api.stores(),
         _api.settings().catchError((Object _) => const SiteSettings()),
+        // Also sets Fmt.currency so catalog prices show the store currency.
+        _api.paymentSettings().catchError((Object _) => const PaymentSettings()),
       ]);
       _products = (results[0] as List<Product>);
       _stores = (results[1] as List<Store>);

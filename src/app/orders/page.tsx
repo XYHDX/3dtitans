@@ -1,5 +1,6 @@
 'use client';
 
+import { useCurrency } from '@/hooks/use-currency';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { PaymentStatusBadge } from '@/components/payment-status-badge';
+import { orderReference } from '@/lib/payments/common';
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: string }> = {
@@ -27,6 +30,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function UserOrdersPage() {
+  const { format: formatPrice } = useCurrency();
   const { user } = useSessionUser();
   const { toast } = useToast();
   const [cancelingId, setCancelingId] = useState<string | null>(null);
@@ -76,6 +80,7 @@ export default function UserOrdersPage() {
                 <TableHead>Order</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Payment</TableHead>
                 <TableHead>Actions</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
@@ -87,13 +92,19 @@ export default function UserOrdersPage() {
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => (
                   <TableRow key={order.id}>
-                    <TableCell className="font-mono text-xs">{order.id.substring(0, 10)}...</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      <Link href={`/checkout/success?orderId=${encodeURIComponent(order.id)}`} className="underline">
+                        {orderReference(order.id)}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       {order.orderDate
                         ? (() => {
@@ -107,6 +118,11 @@ export default function UserOrdersPage() {
                         : 'N/A'}
                     </TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>
+                      <Link href={`/checkout/success?orderId=${encodeURIComponent(order.id)}`}>
+                        <PaymentStatusBadge status={order.paymentStatus} method={order.paymentMethod} />
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       {['Finished', 'Cancelled'].includes(order.status) ? (
                         <span className="text-muted-foreground text-sm">No actions</span>
@@ -139,12 +155,12 @@ export default function UserOrdersPage() {
                         </Button>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">${order.totalAmount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatPrice(order.totalAmount)}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">No orders yet.</TableCell>
+                  <TableCell colSpan={6} className="text-center">No orders yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>

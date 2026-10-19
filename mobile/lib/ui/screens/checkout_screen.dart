@@ -386,8 +386,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     children: [
                       Text(t.total, style: theme.textTheme.titleSmall),
-                      const Spacer(),
-                      Text(Fmt.price(cart.subtotal), style: theme.textTheme.displaySmall),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(Fmt.price(cart.subtotal), style: theme.textTheme.displaySmall),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],

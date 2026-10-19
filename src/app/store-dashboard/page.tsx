@@ -1,5 +1,6 @@
 
 'use client';
+import { useCurrency } from '@/hooks/use-currency';
 import { useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Home, Package, ShoppingBag, UploadCloud } from 'lucide-react';
@@ -13,6 +14,7 @@ import { useProducts, useOrders, useUploads, useStores } from '@/hooks/use-data'
 import { format } from 'date-fns';
 
 export default function StoreDashboardPage() {
+  const { format: formatPrice } = useCurrency();
     const { user } = useSessionUser();
     const { data: products, loading: productsLoading } = useProducts(
         user?.role === 'store-owner' && user?.id ? { uploaderId: user.id } : undefined
@@ -206,7 +208,7 @@ export default function StoreDashboardPage() {
                                     sortedProducts.map((product) => (
                                         <TableRow key={product.id}>
                                             <TableCell className="font-medium">{product.name}</TableCell>
-                                            <TableCell>${product.price.toFixed(2)}</TableCell>
+                                            <TableCell>{formatPrice(product.price)}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
                                             <TableCell>{formatDate(product.createdAt)}</TableCell>
                                         </TableRow>

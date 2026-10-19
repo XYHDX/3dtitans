@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 import '../core/config.dart';
+import '../core/format.dart';
 import 'cookie_jar.dart';
 import 'models.dart';
 
@@ -289,7 +290,9 @@ class TitansApi {
     final json = await _getJson('/payments/settings',
         query: {'_': DateTime.now().millisecondsSinceEpoch.toString()});
     final raw = json['settings'];
-    return raw is Map ? PaymentSettings.fromRaw(raw.cast<String, dynamic>()) : const PaymentSettings();
+    final settings = raw is Map ? PaymentSettings.fromRaw(raw.cast<String, dynamic>()) : const PaymentSettings();
+    Fmt.currency = settings.currencyLabel;
+    return settings;
   }
 
   /// Attaches a payment proof (screenshot URL and/or transfer reference).
