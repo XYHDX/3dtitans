@@ -1,19 +1,34 @@
-'use client';
+// No 'use client' here on purpose: this module is plain data + pure helpers, so
+// server components (root layout, metadata, policy pages) can translate too.
+// Part files in ./i18n-parts must stay plain data as well (no 'use client').
+import { conversionStrings } from './i18n-parts/conversion';
+import { catalogStrings } from './i18n-parts/catalog';
+import { backendStrings } from './i18n-parts/backend';
+import { uploadsStrings } from './i18n-parts/uploads';
+import { pagesStrings } from './i18n-parts/pages';
 
 export type Locale = 'en' | 'ar';
 
-export const defaultLocale: Locale = 'en';
+/** Arabic first: the shop sells in Syria. English is the alternative. */
+export const defaultLocale: Locale = 'ar';
+
+/** Cookie that carries the visitor's language choice (read on the server). */
+export const LOCALE_COOKIE = '3dt-locale';
+
+export function isLocale(value: unknown): value is Locale {
+  return value === 'en' || value === 'ar';
+}
 
 export const localeSettings: Record<Locale, { label: string; dir: 'ltr' | 'rtl' }> = {
   en: { label: 'English', dir: 'ltr' },
   ar: { label: 'العربية', dir: 'rtl' },
 };
 
-export const translations: Record<Locale, Record<string, string>> = {
+const baseTranslations: Record<Locale, Record<string, string>> = {
   en: {
     'nav.products': 'Products',
     'nav.stores': 'Stores',
-    'nav.upload': 'Upload',
+    'nav.upload': 'Custom Print',
     'nav.about': 'About',
     'nav.login': 'Login',
     'nav.signup': 'Sign Up',
@@ -29,34 +44,34 @@ export const translations: Record<Locale, Record<string, string>> = {
     'auth.storeOwnerBlockedTitle': 'Store owner account',
     'auth.storeOwnerBlockedDesc': 'Store owner accounts cannot place orders or uploads. Please use a customer login.',
 
-    'hero.title': 'BUILD WORLDS,\nCREATE LEGENDS',
-    'hero.subtitle': 'Discover a universe of premium, game-ready 3D models. From epic characters to breathtaking environments, find the assets to bring your vision to life.',
-    'hero.ctaPrimary': 'Get started',
-    'hero.ctaSecondary': 'Learn more',
+    'hero.title': 'PRINTED IN 3D,\nMADE IN SYRIA',
+    'hero.subtitle': 'Ready-made 3D-printed keychains, vases, organizers, décor and gifts, plus custom printing from your own model. Delivered across Syria. Pay cash on delivery or with ShamCash.',
+    'hero.ctaPrimary': 'Shop products',
+    'hero.ctaSecondary': 'Print your design',
 
-    'featured.title': 'Featured Models',
-    'featured.subtitle': 'Handpicked by our curators, these models represent the best of what 3D Titans has to offer.',
+    'featured.title': 'Featured Products',
+    'featured.subtitle': 'A hand-picked selection of our 3D-printed products.',
     'featured.viewAll': 'View All',
     'featured.empty': 'No featured products available at the moment.',
 
-    'print.title': 'Print on demand',
-    'print.subtitle': 'Your designs, our expertise',
-    'print.body': 'Have a custom model you need printed? Our state-of-the-art 3D printing service brings your digital creations into the physical world with precision and quality.',
+    'print.title': 'Print your own design',
+    'print.subtitle': 'Your model, printed for you in Syria',
+    'print.body': "Have a 3D model? Upload the STL file and tell us the size, colour and quantity you want. We'll reply with the price and delivery time before we start printing.",
     'print.cta': 'Upload your model',
 
-    'choose.title': "The Creator's Choice",
-    'choose.subtitle': "We're building the ultimate marketplace for 3D creators, with features designed to help you succeed.",
-    'choose.feature1.title': 'Curated Quality',
-    'choose.feature1.desc': 'Every model is hand-picked and tested by our team to ensure it meets our high standards for quality and performance.',
-    'choose.feature2.title': 'Worry-Free Licensing',
-    'choose.feature2.desc': 'Our straightforward licensing grants you broad rights for commercial use, so you can create with confidence.',
-    'choose.feature3.title': 'Thriving Community',
-    'choose.feature3.desc': 'Join a vibrant community of creators. Get feedback, find collaborators, and share your work with fellow 3D artists.',
-    'choose.feature4.title': 'Instant Access',
-    'choose.feature4.desc': 'Get your assets immediately after purchase. No waiting, no hassle. Download and start creating right away.',
+    'choose.title': 'Why 3D Titans',
+    'choose.subtitle': 'Printed locally, checked by hand and delivered to you.',
+    'choose.feature1.title': 'Made in Syria',
+    'choose.feature1.desc': 'Every piece is 3D-printed here in Syria by local makers and checked before it is packed.',
+    'choose.feature2.title': 'Custom prints',
+    'choose.feature2.desc': 'Upload your own 3D model (STL file) and get a price before anything is printed.',
+    'choose.feature3.title': 'Delivery across Syria',
+    'choose.feature3.desc': 'We deliver across the Syrian governorates. We confirm the delivery fee and time with you by phone or WhatsApp.',
+    'choose.feature4.title': 'Pay your way',
+    'choose.feature4.desc': 'Pay cash on delivery or with ShamCash, no card needed. Questions? Message us on WhatsApp.',
 
-    'products.title': 'All Models',
-    'products.subtitle': 'Browse our full collection of high-quality 3D assets.',
+    'products.title': 'All Products',
+    'products.subtitle': 'Browse all our 3D-printed products.',
     'products.empty': 'No products have been added yet.',
 
     'productCard.preview': '3D Preview',
@@ -71,8 +86,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'cart.checkoutGuest': 'Login to Checkout',
     'cart.clear': 'Clear Cart',
     'cart.emptyTitle': 'Your cart is empty',
-    'cart.emptySubtitle': 'Add some models to get started.',
-    'cart.explore': 'Explore Models',
+    'cart.emptySubtitle': 'Add some products to get started.',
+    'cart.explore': 'Browse products',
 
     'checkout.formTitle': 'Shipping & Contact Information',
     'checkout.formSubtitle': 'Enter your details to complete the order.',
@@ -85,7 +100,6 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.toastEmptyTitle': 'Empty Cart',
     'checkout.toastEmptyDesc': 'Cannot place an order with an empty cart.',
     'checkout.toastSuccessTitle': 'Order Placed!',
-    'checkout.toastSuccessDesc': 'Thank you for your purchase. We have sent a confirmation to your email.',
     'checkout.toastErrorTitle': 'Order Failed',
     'checkout.toastErrorDesc': 'An unexpected error occurred.',
     'checkout.loginRequiredTitle': 'Login Required',
@@ -111,6 +125,49 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.notesLabel': 'Add notes (QR, dimensions, links)',
     'checkout.notesPlaceholder': 'Share QR code URL, sizing, or a reference link for this order.',
 
+    'payment.methods.cod.label': 'Cash on Delivery',
+    'payment.methods.cod.blurb': 'Pay in cash when the order arrives at your door.',
+    'payment.methods.bank_transfer.label': 'Bank Transfer',
+    'payment.methods.bank_transfer.blurb': 'Transfer to our bank account. We confirm and ship.',
+    'payment.methods.sham_cash.label': 'Sham Cash (manual transfer)',
+    'payment.methods.sham_cash.blurb': 'Send the amount to our Sham Cash wallet, then upload a screenshot. We confirm it manually.',
+    'payment.methods.sham_cash_epay.label': 'ShamCash — pay online',
+    'payment.methods.sham_cash_epay.blurb': "You'll be taken to the ShamCash app or website to confirm the payment with your transfer code. Confirmed instantly.",
+    'payment.methods.syriatel_cash.label': 'Syriatel Cash',
+    'payment.methods.syriatel_cash.blurb': 'Pay via Syriatel Cash wallet, then upload a screenshot.',
+    'payment.methods.stripe.label': 'Card payment',
+    'payment.methods.stripe.blurb': 'Pay with Visa / Mastercard via Stripe (international).',
+    'payment.methods.loading': 'Loading payment methods',
+    'payment.methods.aria': 'Payment method',
+
+    'checkout.shamcashStartFailedTitle': 'ShamCash payment not started',
+    'checkout.shamcashStartFailedDesc': 'Your order was saved. You can start the ShamCash payment again from the next page.',
+
+    'shamcashEpay.title': 'Pay with ShamCash',
+    'shamcashEpay.amount': 'Amount to pay',
+    'shamcashEpay.intro': "You'll be taken to the ShamCash app (or the ShamCash website) to confirm the payment with your transfer code. The payment link is valid for 10 minutes.",
+    'shamcashEpay.payButton': 'Pay {amount} with ShamCash',
+    'shamcashEpay.redirecting': 'Opening ShamCash…',
+    'shamcashEpay.waitingTitle': 'Waiting for ShamCash confirmation…',
+    'shamcashEpay.waitingDesc': 'Keep this page open — it updates automatically as soon as ShamCash confirms your payment.',
+    'shamcashEpay.reopen': 'Open the ShamCash payment page again',
+    'shamcashEpay.paidTitle': 'Payment received',
+    'shamcashEpay.paidDesc': "ShamCash confirmed your payment. We'll start processing your order shortly.",
+    'shamcashEpay.expiredTitle': 'The payment link expired',
+    'shamcashEpay.expiredDesc': 'ShamCash payment links are valid for 10 minutes and this one was not paid, so no money was taken. You can try again.',
+    'shamcashEpay.failedTitle': "We couldn't start the ShamCash payment",
+    'shamcashEpay.failedDesc': 'No money was taken. Please try again; if it keeps failing, contact us.',
+    'shamcashEpay.tryAgain': 'Try again',
+    'shamcashEpay.slowTitle': "We're still waiting for ShamCash",
+    'shamcashEpay.checkAgain': 'Check again',
+    'shamcashEpay.checking': 'Checking…',
+    'shamcashEpay.errorGeneric': 'Something went wrong. Please try again in a moment.',
+    'shamcashEpay.errorUnavailable': 'ShamCash payment is not available right now. Please try again later or contact us.',
+    'shamcashEpay.errorTooMany': 'Too many attempts. Please wait a few minutes and try again.',
+    'shamcashEpay.cancelled': 'This order was cancelled, so it can no longer be paid.',
+    'shamcashEpay.reference': 'Order reference',
+    'shamcashEpay.reviewTitle': 'Payment received — under review',
+
     'productDetail.rating': '{rating} ({count} reviews)',
     'productDetail.noReviews': 'No reviews yet',
     'productDetail.stlContactEmail': 'To buy the STL file, contact the store owner at {email}.',
@@ -121,46 +178,21 @@ export const translations: Record<Locale, Record<string, string>> = {
     'productDetail.close': 'Close product',
     'productDetail.noDescription': 'No description provided.',
 
-    'upload.requireLoginTitle': 'Please Log In',
-    'upload.requireLoginDesc': 'You need to be logged in to upload a model for a quote.',
-    'upload.requireLoginCta': 'Login',
-    'upload.title': 'Upload Your Model',
-    'upload.subtitle': 'Have a 3D model you want us to print? Upload it here! We accept .STL files only.',
-    'upload.modelName': 'Model Name',
-    'upload.phone': 'Phone Number',
-    'upload.file': '3D Model File',
-    'upload.fileCta': 'Click to upload',
-    'upload.fileDrop': 'or drag and drop',
-    'upload.fileTypes': '.STL only (MAX. {size}MB)',
-    'upload.notes': 'Printing Notes',
-    'upload.submit': 'Get a Quote',
-    'upload.submitting': 'Uploading...',
-    'upload.toastTooLargeTitle': 'File too large',
-    'upload.toastTooLargeDesc': 'Please select a file smaller than {size}MB.',
-    'upload.toastInvalidTypeTitle': 'STL files only',
-    'upload.toastInvalidTypeDesc': 'Please upload a .stl file. Other file types are not accepted.',
     'upload.storeOwnerBlockedTitle': 'Uploads unavailable for store owners',
     'upload.storeOwnerBlockedDesc': 'Use a customer account to request prints.',
-    'upload.toastErrorTitle': 'Error',
-    'upload.toastErrorNoFile': 'Please select a file to upload.',
-    'upload.toastErrorLogin': 'You must be logged in to upload a file.',
-    'upload.toastSuccessTitle': 'Upload successful!',
-    'upload.toastSuccessDesc': 'File "{file}" has been submitted.',
-    'upload.toastFailTitle': 'Upload Failed',
-    'upload.toastFailDesc': 'Error: {message}. Please check the console for more details.',
 
     'orders.customerNotes': 'Customer notes',
     'orders.noCustomerNotes': 'No customer notes provided.',
 
     'about.defaultHeroTitle': 'About 3D Titans',
-    'about.defaultHeroSubtitle': 'The titans behind the 3D world.',
-    'about.defaultMissionTitle': 'Our Mission',
-    'about.defaultMission': 'We are dedicated to providing the highest quality 3D models and printing services to creators, developers, and enthusiasts around the globe. Our mission is to empower imagination by making top-tier 3D assets accessible to everyone.',
+    'about.defaultHeroSubtitle': 'A Syrian 3D-printing studio and shop.',
+    'about.defaultMissionTitle': 'What we do',
+    'about.defaultMission': 'We 3D-print useful and fun products in Syria, from keychains and organizers to vases and décor, and we print custom models for people and businesses. Our aim is simple: well-made pieces at fair prices, delivered across Syria, with payment options that work here.',
     'about.defaultContactTitle': 'Get in Touch',
-    'about.defaultContact': "Have a question, a project proposal, or just want to say hello? We'd love to hear from you.",
+    'about.defaultContact': "Have a question or a custom print in mind? Send us a message below or reach us on WhatsApp. We'd love to hear from you.",
     'about.defaultContactCard': 'Contact Us',
 
-    'footer.blurbDefault': 'Your ultimate destination for high-quality, game-ready 3D models and assets.',
+    'footer.blurbDefault': '3D-printed products made in Syria, custom prints from your own model, and delivery across Syria.',
     'footer.privacy': 'Privacy Policy',
     'footer.terms': 'Terms of Service',
     'footer.debug': 'Debug',
@@ -169,7 +201,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'brand.title': '3D Titans',
 
     'stores.title': 'Store Directory',
-    'stores.subtitle': 'Browse every creator storefront and discover their products.',
+    'stores.subtitle': "Browse our makers' stores and discover their products.",
     'stores.viewAll': 'View all stores',
     'stores.viewStore': 'View store',
     'stores.empty': 'No stores are live yet.',
@@ -192,7 +224,7 @@ export const translations: Record<Locale, Record<string, string>> = {
   ar: {
     'nav.products': 'المنتجات',
     'nav.stores': 'المتاجر',
-    'nav.upload': 'رفع نموذج',
+    'nav.upload': 'طباعة مخصّصة',
     'nav.about': 'من نحن',
     'nav.login': 'تسجيل الدخول',
     'nav.signup': 'إنشاء حساب',
@@ -201,73 +233,72 @@ export const translations: Record<Locale, Record<string, string>> = {
     'nav.logout': 'تسجيل الخروج',
     'nav.openCart': 'فتح السلة',
     'nav.checkout': 'إتمام الشراء',
-    'nav.loginToCheckout': 'تسجيل الدخول للإتمام',
+    'nav.loginToCheckout': 'سجّل الدخول لإتمام الشراء',
 
-    'auth.loginToBuyTitle': 'مطلوب تسجيل الدخول',
+    'auth.loginToBuyTitle': 'يلزم تسجيل الدخول',
     'auth.loginToBuyDesc': 'يرجى تسجيل الدخول لإضافة المنتجات إلى السلة.',
     'auth.storeOwnerBlockedTitle': 'حساب مالك متجر',
     'auth.storeOwnerBlockedDesc': 'لا يمكن لحسابات مالكي المتاجر تقديم طلبات أو رفع ملفات. يرجى استخدام حساب عميل.',
 
-    'hero.title': 'ابنِ العوالم،\nواصنع الأساطير',
-    'hero.subtitle': 'اكتشف عالماً من النماذج ثلاثية الأبعاد الجاهزة للألعاب. من الشخصيات الملحمية إلى البيئات المبهرة، ستجد كل ما تحتاجه لإحياء رؤيتك.',
-    'hero.ctaPrimary': 'ابدأ الآن',
-    'hero.ctaSecondary': 'اعرف المزيد',
+    'hero.title': 'طباعة ثلاثية الأبعاد\nبأيدٍ سورية',
+    'hero.subtitle': 'ميداليات ومزهريات ومنظّمات وقطع ديكور وهدايا جاهزة مطبوعة بتقنية ثلاثية الأبعاد، إضافة إلى طباعة مخصّصة لتصميمك الخاص. نوصل إلى مختلف المحافظات السورية، والدفع نقداً عند الاستلام أو عبر شام كاش.',
+    'hero.ctaPrimary': 'تسوّق المنتجات',
+    'hero.ctaSecondary': 'اطبع تصميمك',
 
-    'featured.title': 'نماذج مميزة',
-    'featured.subtitle': 'مختارة بعناية من فريقنا، هذه النماذج تمثل أفضل ما يقدمه 3D Titans.',
+    'featured.title': 'منتجات مميّزة',
+    'featured.subtitle': 'تشكيلة مختارة بعناية من منتجاتنا المطبوعة بتقنية ثلاثية الأبعاد.',
     'featured.viewAll': 'عرض الكل',
     'featured.empty': 'لا توجد منتجات مميزة حالياً.',
 
-    'print.title': 'الطباعة حسب الطلب',
-    'print.subtitle': 'تصاميمك، خبرتنا',
-    'print.body': 'هل لديك نموذج مخصص تريد طباعته؟ تقنيتنا المتطورة تحول ابتكاراتك الرقمية إلى واقع بدقة وجودة.',
+    'print.title': 'اطبع تصميمك الخاص',
+    'print.subtitle': 'نموذجك، نطبعه لك في سوريا',
+    'print.body': 'لديك نموذج ثلاثي الأبعاد؟ ارفع ملف STL وأخبرنا بالمقاس واللون والكمية التي تريدها، وسنرد عليك بالسعر وموعد التسليم قبل أن نبدأ الطباعة.',
     'print.cta': 'ارفع نموذجك',
 
-    'choose.title': 'خيار المبدعين',
-    'choose.subtitle': 'نبني أفضل سوق للمصممين ثلاثيي الأبعاد، مع ميزات تساعدك على النجاح.',
-    'choose.feature1.title': 'جودة منتقاة',
-    'choose.feature1.desc': 'يتم اختيار كل نموذج واختباره للتأكد من مطابقته لمعاييرنا العالية.',
-    'choose.feature2.title': 'ترخيص بلا تعقيد',
-    'choose.feature2.desc': 'ترخيصنا الواضح يمنحك حقوقاً واسعة للاستخدام التجاري بثقة.',
-    'choose.feature3.title': 'مجتمع متفاعل',
-    'choose.feature3.desc': 'انضم إلى مجتمع نشط من المبدعين لتبادل الخبرات والتعاون.',
-    'choose.feature4.title': 'وصول فوري',
-    'choose.feature4.desc': 'احصل على أصولك فور الشراء بلا انتظار أو تعقيد.',
+    'choose.title': 'لماذا 3D Titans؟',
+    'choose.subtitle': 'نطبع محلياً، ونفحص كل قطعة يدوياً، ونوصلها إليك.',
+    'choose.feature1.title': 'صُنع في سوريا',
+    'choose.feature1.desc': 'كل قطعة تُطبع هنا في سوريا على أيدي صنّاع محليين، وتُفحص قبل تغليفها.',
+    'choose.feature2.title': 'طباعة حسب الطلب',
+    'choose.feature2.desc': 'ارفع نموذجك ثلاثي الأبعاد (ملف STL) واحصل على السعر قبل أن نطبع أي شيء.',
+    'choose.feature3.title': 'توصيل في كل سوريا',
+    'choose.feature3.desc': 'نوصل إلى مختلف المحافظات السورية، ونؤكد معك رسوم التوصيل وموعده عبر الهاتف أو واتساب.',
+    'choose.feature4.title': 'ادفع بالطريقة التي تناسبك',
+    'choose.feature4.desc': 'الدفع نقداً عند الاستلام أو عبر شام كاش، دون الحاجة إلى بطاقة. لديك سؤال؟ راسلنا على واتساب.',
 
-    'products.title': 'جميع النماذج',
-    'products.subtitle': 'تصفح مجموعتنا الكاملة من الأصول ثلاثية الأبعاد عالية الجودة.',
+    'products.title': 'جميع المنتجات',
+    'products.subtitle': 'تصفّح جميع منتجاتنا المطبوعة بتقنية ثلاثية الأبعاد.',
     'products.empty': 'لا توجد منتجات مضافة بعد.',
 
     'productCard.preview': 'معاينة ثلاثية الأبعاد',
     'productCard.reviews': '{count} مراجعة',
     'productCard.addedTitle': 'تمت الإضافة إلى السلة',
-    'productCard.addedDescription': '"{name}" تمت إضافته إلى سلتك.',
+    'productCard.addedDescription': 'أُضيف "{name}" إلى سلتك.',
     'productCard.addSr': 'أضف إلى السلة',
 
     'cart.title': 'سلة التسوق',
     'cart.total': 'الإجمالي:',
     'cart.checkout': 'إتمام الشراء',
-    'cart.checkoutGuest': 'تسجيل الدخول للإتمام',
+    'cart.checkoutGuest': 'سجّل الدخول لإتمام الشراء',
     'cart.clear': 'إفراغ السلة',
     'cart.emptyTitle': 'سلتك فارغة',
-    'cart.emptySubtitle': 'أضف بعض النماذج للبدء.',
-    'cart.explore': 'استكشاف النماذج',
+    'cart.emptySubtitle': 'أضف بعض المنتجات لتبدأ.',
+    'cart.explore': 'تصفّح المنتجات',
 
     'checkout.formTitle': 'معلومات الشحن والتواصل',
     'checkout.formSubtitle': 'أدخل بياناتك لإتمام الطلب.',
     'checkout.summaryTitle': 'ملخص الطلب',
-    'checkout.summarySubtitle': 'راجع العناصر قبل الإرسال.',
+    'checkout.summarySubtitle': 'راجع المنتجات قبل تأكيد الطلب.',
     'checkout.emptyTitle': 'سلتك فارغة.',
     'checkout.emptyCta': 'متابعة التسوق',
     'checkout.placeOrder': 'تأكيد الطلب',
-    'checkout.placing': 'جاري تأكيد الطلب...',
+    'checkout.placing': 'جارٍ تأكيد الطلب…',
     'checkout.toastEmptyTitle': 'سلة فارغة',
     'checkout.toastEmptyDesc': 'لا يمكن إتمام طلب بسلة فارغة.',
-    'checkout.toastSuccessTitle': 'تم تسجيل الطلب!',
-    'checkout.toastSuccessDesc': 'شكراً لشرائك. أرسلنا لك رسالة تأكيد بالبريد الإلكتروني.',
+    'checkout.toastSuccessTitle': 'تم استلام طلبك!',
     'checkout.toastErrorTitle': 'فشل الطلب',
     'checkout.toastErrorDesc': 'حدث خطأ غير متوقع.',
-    'checkout.loginRequiredTitle': 'مطلوب تسجيل الدخول',
+    'checkout.loginRequiredTitle': 'يلزم تسجيل الدخول',
     'checkout.loginRequiredDesc': 'يرجى تسجيل الدخول لإكمال عملية الشراء.',
     'checkout.loginCta': 'تسجيل الدخول',
     'checkout.storeOwnerBlockedTitle': 'إتمام الشراء غير متاح',
@@ -278,17 +309,60 @@ export const translations: Record<Locale, Record<string, string>> = {
     'checkout.labels.address': 'العنوان',
     'checkout.labels.city': 'المدينة',
     'checkout.labels.postalCode': 'الرمز البريدي',
-    'checkout.labels.country': 'الدولة',
+    'checkout.labels.country': 'البلد',
     'checkout.errors.fullName': 'الاسم الكامل مطلوب.',
-    'checkout.errors.email': 'عنوان بريد إلكتروني صالح مطلوب.',
-    'checkout.errors.phone': 'رقم هاتف صالح مطلوب.',
+    'checkout.errors.email': 'يرجى إدخال بريد إلكتروني صحيح.',
+    'checkout.errors.phone': 'يرجى إدخال رقم هاتف صحيح.',
     'checkout.errors.address': 'العنوان مطلوب.',
     'checkout.errors.city': 'المدينة مطلوبة.',
     'checkout.errors.postalCode': 'الرمز البريدي مطلوب.',
-    'checkout.errors.country': 'الدولة مطلوبة.',
+    'checkout.errors.country': 'البلد مطلوب.',
     'checkout.errors.notesMax': 'الملاحظات يجب ألا تتجاوز 500 حرف.',
     'checkout.notesLabel': 'أضف ملاحظات (رمز QR أو الأبعاد أو الروابط)',
     'checkout.notesPlaceholder': 'شارك رابط رمز QR أو المقاسات أو رابط مرجعي لهذا الطلب.',
+
+    'payment.methods.cod.label': 'الدفع عند الاستلام',
+    'payment.methods.cod.blurb': 'ادفع نقداً عند وصول الطلب إلى بابك.',
+    'payment.methods.bank_transfer.label': 'حوالة بنكية',
+    'payment.methods.bank_transfer.blurb': 'حوّل المبلغ إلى حسابنا البنكي، ثم نؤكد الطلب ونشحنه.',
+    'payment.methods.sham_cash.label': 'شام كاش (تحويل يدوي)',
+    'payment.methods.sham_cash.blurb': 'أرسل المبلغ إلى محفظة شام كاش الخاصة بنا، ثم ارفع لقطة شاشة. نؤكد الدفع يدوياً.',
+    'payment.methods.sham_cash_epay.label': 'شام كاش — دفع إلكتروني',
+    'payment.methods.sham_cash_epay.blurb': 'سيتم تحويلك إلى تطبيق شام كاش أو موقعه لتأكيد الدفع برمز التحويل الخاص بك. يتم التأكيد فوراً.',
+    'payment.methods.syriatel_cash.label': 'سيريتل كاش',
+    'payment.methods.syriatel_cash.blurb': 'ادفع عبر محفظة سيريتل كاش، ثم ارفع لقطة شاشة.',
+    'payment.methods.stripe.label': 'الدفع بالبطاقة',
+    'payment.methods.stripe.blurb': 'ادفع ببطاقة فيزا أو ماستركارد عبر Stripe (دولي).',
+    'payment.methods.loading': 'جارٍ تحميل طرق الدفع',
+    'payment.methods.aria': 'طريقة الدفع',
+
+    'checkout.shamcashStartFailedTitle': 'لم يبدأ الدفع عبر شام كاش',
+    'checkout.shamcashStartFailedDesc': 'تم حفظ طلبك. يمكنك بدء الدفع عبر شام كاش مجدداً من الصفحة التالية.',
+
+    'shamcashEpay.title': 'الدفع عبر شام كاش',
+    'shamcashEpay.amount': 'المبلغ المطلوب',
+    'shamcashEpay.intro': 'سيتم تحويلك إلى تطبيق شام كاش (أو موقع شام كاش) لتأكيد الدفع برمز التحويل الخاص بك. رابط الدفع صالح لمدة 10 دقائق.',
+    'shamcashEpay.payButton': 'ادفع {amount} عبر شام كاش',
+    'shamcashEpay.redirecting': 'جارٍ فتح شام كاش…',
+    'shamcashEpay.waitingTitle': 'بانتظار تأكيد شام كاش…',
+    'shamcashEpay.waitingDesc': 'أبقِ هذه الصفحة مفتوحة — سيتم تحديثها تلقائياً فور تأكيد شام كاش لعملية الدفع.',
+    'shamcashEpay.reopen': 'افتح صفحة الدفع في شام كاش مجدداً',
+    'shamcashEpay.paidTitle': 'تم استلام الدفعة',
+    'shamcashEpay.paidDesc': 'أكدت شام كاش عملية الدفع. سنبدأ بتجهيز طلبك قريباً.',
+    'shamcashEpay.expiredTitle': 'انتهت صلاحية رابط الدفع',
+    'shamcashEpay.expiredDesc': 'روابط الدفع في شام كاش صالحة لمدة 10 دقائق ولم يتم الدفع عبر هذا الرابط، لذلك لم يُخصم أي مبلغ. يمكنك المحاولة مجدداً.',
+    'shamcashEpay.failedTitle': 'تعذّر بدء الدفع عبر شام كاش',
+    'shamcashEpay.failedDesc': 'لم يُخصم أي مبلغ. يرجى المحاولة مجدداً، وإذا تكررت المشكلة تواصل معنا.',
+    'shamcashEpay.tryAgain': 'حاول مجدداً',
+    'shamcashEpay.slowTitle': 'ما زلنا بانتظار شام كاش',
+    'shamcashEpay.checkAgain': 'تحقق مجدداً',
+    'shamcashEpay.checking': 'جارٍ التحقق…',
+    'shamcashEpay.errorGeneric': 'حدث خطأ ما. يرجى المحاولة بعد قليل.',
+    'shamcashEpay.errorUnavailable': 'الدفع عبر شام كاش غير متاح حالياً. يرجى المحاولة لاحقاً أو التواصل معنا.',
+    'shamcashEpay.errorTooMany': 'محاولات كثيرة. يرجى الانتظار بضع دقائق ثم المحاولة مجدداً.',
+    'shamcashEpay.cancelled': 'تم إلغاء هذا الطلب، لذلك لم يعد بالإمكان دفعه.',
+    'shamcashEpay.reference': 'رقم الطلب المرجعي',
+    'shamcashEpay.reviewTitle': 'تم استلام الدفعة — قيد المراجعة',
 
     'productDetail.rating': '{rating} ({count} مراجعة)',
     'productDetail.noReviews': 'لا توجد مراجعات بعد',
@@ -300,46 +374,21 @@ export const translations: Record<Locale, Record<string, string>> = {
     'productDetail.close': 'إغلاق المنتج',
     'productDetail.noDescription': 'لا يوجد وصف متاح.',
 
-    'upload.requireLoginTitle': 'يرجى تسجيل الدخول',
-    'upload.requireLoginDesc': 'يجب أن تسجل الدخول لرفع نموذج للحصول على عرض سعر.',
-    'upload.requireLoginCta': 'تسجيل الدخول',
-    'upload.title': 'ارفع نموذجك',
-    'upload.subtitle': 'هل لديك نموذج ثلاثي الأبعاد تريد منا طباعته؟ ارفعه هنا! نقبل ملفات .STL فقط.',
-    'upload.modelName': 'اسم النموذج',
-    'upload.phone': 'رقم الهاتف',
-    'upload.file': 'ملف النموذج ثلاثي الأبعاد',
-    'upload.fileCta': 'اضغط للرفع',
-    'upload.fileDrop': 'أو اسحب الملف وأفلته',
-    'upload.fileTypes': '.STL فقط (بحد أقصى {size} ميجابايت)',
-    'upload.notes': 'ملاحظات الطباعة',
-    'upload.submit': 'احصل على عرض سعر',
-    'upload.submitting': 'جاري الرفع...',
-    'upload.toastTooLargeTitle': 'الملف كبير جداً',
-    'upload.toastTooLargeDesc': 'يرجى اختيار ملف أصغر من {size} ميجابايت.',
-    'upload.toastInvalidTypeTitle': 'ملفات STL فقط',
-    'upload.toastInvalidTypeDesc': 'يرجى رفع ملف بامتداد .stl فقط. لا نقبل الامتدادات الأخرى.',
-    'upload.storeOwnerBlockedTitle': 'الرفع غير متاح لمالكي المتاجر',
+    'upload.storeOwnerBlockedTitle': 'رفع الملفات غير متاح لأصحاب المتاجر',
     'upload.storeOwnerBlockedDesc': 'استخدم حساب عميل لطلب الطباعة.',
-    'upload.toastErrorTitle': 'خطأ',
-    'upload.toastErrorNoFile': 'يرجى اختيار ملف للرفع.',
-    'upload.toastErrorLogin': 'يجب تسجيل الدخول لرفع الملف.',
-    'upload.toastSuccessTitle': 'تم الرفع بنجاح!',
-    'upload.toastSuccessDesc': 'تم إرسال الملف "{file}".',
-    'upload.toastFailTitle': 'فشل الرفع',
-    'upload.toastFailDesc': 'خطأ: {message}. يرجى مراجعة وحدة التحكم للتفاصيل.',
 
     'orders.customerNotes': 'ملاحظات العميل',
     'orders.noCustomerNotes': 'لا توجد ملاحظات من العميل.',
 
-    'about.defaultHeroTitle': 'من نحن 3D Titans',
-    'about.defaultHeroSubtitle': 'العمالقة خلف عالم الطباعة ثلاثية الأبعاد.',
-    'about.defaultMissionTitle': 'مهمتنا',
-    'about.defaultMission': 'نلتزم بتقديم أفضل النماذج والخدمات ثلاثية الأبعاد للمبدعين والمطورين والمهتمين حول العالم، لتمكين خيالهم بجعل الأصول عالية الجودة في متناول الجميع.',
+    'about.defaultHeroTitle': 'تعرّف على 3D Titans',
+    'about.defaultHeroSubtitle': 'استوديو ومتجر سوري للطباعة ثلاثية الأبعاد.',
+    'about.defaultMissionTitle': 'ماذا نفعل',
+    'about.defaultMission': 'نطبع في سوريا منتجات مفيدة وممتعة بتقنية ثلاثية الأبعاد، من الميداليات والمنظّمات إلى المزهريات وقطع الديكور، ونطبع النماذج المخصّصة للأفراد والشركات. هدفنا بسيط: قطع متقنة بأسعار عادلة، توصيل إلى مختلف المحافظات السورية، وطرق دفع تناسب السوق المحلي.',
     'about.defaultContactTitle': 'تواصل معنا',
-    'about.defaultContact': 'لديك سؤال أو مشروع أو ترغب فقط في إلقاء التحية؟ يسعدنا سماعك.',
-    'about.defaultContactCard': 'راسلنا',
+    'about.defaultContact': 'لديك سؤال أو فكرة لطباعة مخصّصة؟ أرسل لنا رسالة من النموذج أدناه أو تواصل معنا عبر واتساب. يسعدنا سماعك.',
+    'about.defaultContactCard': 'أرسل لنا رسالة',
 
-    'footer.blurbDefault': 'وجهتك الأولى للنماذج ثلاثية الأبعاد عالية الجودة الجاهزة للاستخدام.',
+    'footer.blurbDefault': 'منتجات مطبوعة بتقنية ثلاثية الأبعاد صُنعت في سوريا، وطباعة مخصّصة لتصاميمك، مع توصيل إلى مختلف المحافظات السورية.',
     'footer.privacy': 'سياسة الخصوصية',
     'footer.terms': 'شروط الاستخدام',
     'footer.debug': 'تصحيح',
@@ -348,17 +397,17 @@ export const translations: Record<Locale, Record<string, string>> = {
     'brand.title': '3D Titans',
 
     'stores.title': 'دليل المتاجر',
-    'stores.subtitle': 'تصفح جميع المتاجر واكتشف منتجاتهم.',
+    'stores.subtitle': 'تصفّح متاجر صنّاعنا واكتشف منتجاتهم.',
     'stores.viewAll': 'عرض كل المتاجر',
     'stores.viewStore': 'عرض المتجر',
     'stores.empty': 'لا توجد متاجر متاحة بعد.',
-    'stores.ownerCta': 'كن مالك متجر',
+    'stores.ownerCta': 'كن صاحب متجر',
     'stores.noBio': 'لم يضف المتجر نبذة بعد.',
     'stores.productsCount': '{count} منتج',
     'stores.published': 'منشور',
     'stores.draft': 'مسودة',
     'stores.notFound': 'المتجر غير موجود.',
-    'stores.back': 'عودة للمتاجر',
+    'stores.back': 'العودة إلى المتاجر',
     'stores.visitSite': 'زيارة الموقع',
     'stores.bioHeading': 'عن المتجر',
     'stores.atAGlance': 'نظرة سريعة',
@@ -368,4 +417,40 @@ export const translations: Record<Locale, Record<string, string>> = {
     'stores.noProducts': 'لا توجد منتجات بعد.',
     'stores.website': 'الموقع',
   },
+};
+
+/**
+ * Look up `key` for `locale` (falls back to English, then `fallback`, then the
+ * key itself) and fill `{var}` placeholders. Shared by the client provider and
+ * server components (see src/lib/i18n-server.ts).
+ */
+export function translate(
+  locale: Locale,
+  key: string,
+  fallback?: string,
+  vars?: Record<string, string | number>
+): string {
+  const template = translations[locale]?.[key] ?? translations.en[key] ?? fallback ?? key;
+  return template.replace(/\{(\w+)\}/g, (_, token) => {
+    if (vars && token in vars) return String(vars[token]);
+    return `{${token}}`;
+  });
+}
+
+/**
+ * Strings are split by area (src/lib/i18n-parts/*) and merged here; later
+ * parts override earlier keys. Every part must define the same keys in `en`
+ * and `ar`.
+ */
+const PARTS: Array<Record<Locale, Record<string, string>>> = [
+  conversionStrings,
+  catalogStrings,
+  backendStrings,
+  uploadsStrings,
+  pagesStrings,
+];
+
+export const translations: Record<Locale, Record<string, string>> = {
+  en: Object.assign({}, baseTranslations.en, ...PARTS.map((p) => p.en)),
+  ar: Object.assign({}, baseTranslations.ar, ...PARTS.map((p) => p.ar)),
 };

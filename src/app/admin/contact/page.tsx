@@ -8,10 +8,15 @@ import type { ContactSubmission } from '@/lib/types';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useSessionUser } from '@/hooks/use-session';
 import { useContactSubmissions } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
+
+/** Same cap as GET /api/contact. */
+const MAX_LISTED = 500;
 
 export default function ContactAdminPage() {
     const { user } = useSessionUser();
     const { data: submissions, loading: submissionsLoading } = useContactSubmissions();
+    const { t } = useTranslation();
 
     if (!user) {
         return (
@@ -34,7 +39,7 @@ export default function ContactAdminPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Contact Form Submissions</CardTitle>
-                <CardDescription>A list of all messages received through your website's contact form.</CardDescription>
+                <CardDescription>A list of all messages received through your website&apos;s contact form.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -96,6 +101,11 @@ export default function ContactAdminPage() {
                         )}
                     </TableBody>
                 </Table>
+                {submissions && submissions.length >= MAX_LISTED && (
+                    <p className="text-xs text-muted-foreground pt-4">
+                        {t('backend.contact.truncated', 'Showing the newest {count} messages.', { count: MAX_LISTED })}
+                    </p>
+                )}
             </CardContent>
         </Card>
     )

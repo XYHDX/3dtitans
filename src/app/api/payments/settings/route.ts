@@ -15,12 +15,14 @@ export const revalidate = 0;
  */
 export async function GET() {
   try {
-    const { raw, available, currency, shamCashAutoVerify } = await getPaymentSettings();
+    const { raw, available, currency } = await getPaymentSettings();
     const pick = (k: string) => raw[`payment.${k}`] || '';
     const settings: Record<string, string> = {
       'payment.codEnabled': String(available.cod),
       'payment.bankEnabled': String(available.bank_transfer),
       'payment.shamCashEnabled': String(available.sham_cash),
+      // Only a boolean — the ShamCash e-pay keys live in server env vars and are never sent.
+      'payment.shamCashEpayEnabled': String(available.sham_cash_epay),
       'payment.syriatelCashEnabled': String(available.syriatel_cash),
       'payment.stripeEnabled': String(available.stripe),
       'payment.bankName': pick('bankName'),
@@ -30,7 +32,6 @@ export async function GET() {
       'payment.shamCashNumber': pick('shamCashNumber'),
       'payment.syriatelCashNumber': pick('syriatelCashNumber'),
       'payment.currencyLabel': currency,
-      'payment.shamCashAutoVerify': String(available.sham_cash && shamCashAutoVerify),
     };
     return NextResponse.json(
       { settings },

@@ -1,5 +1,7 @@
 
 import type { Config } from 'tailwindcss';
+import tailwindcssAnimate from 'tailwindcss-animate';
+import typography from '@tailwindcss/typography';
 
 const config = {
   darkMode: ['class'],
@@ -83,7 +85,10 @@ const config = {
       fontFamily: {
         // Body = Space Mono, Headline = Press Start 2P (brand v2)
         body: ['var(--font-space-mono)', 'ui-monospace', 'monospace'],
-        headline: ['var(--font-press-start)', 'Press Start 2P', 'monospace'],
+        // The family name must stay quoted: unquoted, "2P" is not a valid
+        // identifier, the whole declaration becomes invalid and .font-headline
+        // silently falls back to the body font.
+        headline: ['var(--font-press-start)', '"Press Start 2P"', 'monospace'],
         mono: ['var(--font-space-mono)', 'ui-monospace', 'monospace'],
       },
       boxShadow: {
@@ -95,6 +100,9 @@ const config = {
       },
     },
   },
+  // animate: enter/exit animations used by sheets, dialogs and toasts;
+  // typography: `prose` for the policy pages (L-24).
+  plugins: [tailwindcssAnimate, typography],
 } satisfies Config
 
 export default config;

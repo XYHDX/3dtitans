@@ -1,9 +1,20 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import { rateLimitByKey } from '@/lib/rate-limit';
 import { getServerSession } from 'next-auth';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 
 type Ctx = { params: { id: string } };
+
+/** The product page shows rating + review count: drop its ISR cache. */
+function revalidateProduct(id: string) {
+  try {
+    revalidateTag(`product:${id}`);
+  } catch (err) {
+    console.error('revalidateTag failed', err);
+  }
+}
 
 function mapReview(r: any) {
   return {
@@ -43,6 +54,9 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
+    if (!rateLimitByKey(`review:${session.user.id}`, { windowMs: 10 * 60 * 1000, max: 10 }).ok) {
+      return NextResponse.json({ error: 'Too many reviews in a short time. Please wait a few minutes.' }, { status: 429 });
+    }
 
     const productId = (params.id || '').trim();
     if (productId.length < 8 || productId.length > 64) {
@@ -59,20 +73,27 @@ export async function POST(req: Request, { params }: Ctx) {
     const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 120) : '';
     const reviewBody = typeof body?.body === 'string' ? body.body.trim().slice(0, 4000) : '';
 
-    // Verify the product exists — pre-validates the FK so we return 404 not 500
+    // Verify the product exists (and is still sold) — pre-validates the FK so we return 404 not 500
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true },
+      select: { id: true, uploaderId: true, archivedAt: true },
     });
-    if (!product) {
+    if (!product || product.archivedAt) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
+    if (product.uploaderId === session.user.id) {
+      return NextResponse.json({ error: "You can't review your own product." }, { status: 403 });
+    }
 
-    // Detect verified purchase — has this user ever ordered this product?
+    // "Verified purchase" only for an order of this product that was actually
+    // paid or delivered (not an unpaid or cancelled one).
     const verifiedPurchase = !!(await prisma.orderItem.findFirst({
       where: {
         productId,
-        order: { userId: session.user.id },
+        order: {
+          userId: session.user.id,
+          OR: [{ paymentStatus: 'paid' }, { status: 'Finished' }],
+        },
       },
       select: { id: true },
     }));
@@ -110,6 +131,7 @@ export async function POST(req: Request, { params }: Ctx) {
       // Trigger handles it — non-fatal
     }
 
+    revalidateProduct(productId);
     return NextResponse.json({ review: mapReview({ ...upserted, user: session.user }) });
   } catch (err: any) {
     // Race condition: product or user deleted between the existence-check and the upsert.
@@ -150,6 +172,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       });
     } catch (e) {}
 
+    revalidateProduct(productId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('reviews DELETE', err);

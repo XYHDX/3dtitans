@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { rateLimit } from '@/lib/rate-limit';
 import { validatePassword } from '@/lib/password';
+import { forgetSessionAccess } from '@/lib/auth/options';
 
 export async function POST(req: Request) {
     try {
@@ -38,16 +39,24 @@ export async function POST(req: Request) {
 
         const passwordHash = await bcrypt.hash(password, 10);
 
-        await prisma.$transaction([
-            prisma.user.update({
+        const [updated] = await prisma.$transaction([
+            // Bumping tokenVersion signs out every existing session (e.g. a
+            // stolen one) within a minute — see lib/auth/options.ts.
+            prisma.user.updateMany({
                 where: { email: existingToken.email },
-                data: { passwordHash },
+                data: { passwordHash, tokenVersion: { increment: 1 } },
             }),
             // Burn every outstanding token for this email.
             prisma.passwordResetToken.deleteMany({
                 where: { email: existingToken.email },
             }),
         ]);
+        if (updated.count === 0) {
+            // The account was deleted after the link was sent.
+            return NextResponse.json({ error: 'Invalid or expired link' }, { status: 400 });
+        }
+        const user = await prisma.user.findUnique({ where: { email: existingToken.email }, select: { id: true } });
+        if (user) forgetSessionAccess(user.id);
 
         return NextResponse.json({ message: 'Password reset successfully' });
     } catch (error) {

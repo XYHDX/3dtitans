@@ -19,6 +19,11 @@ type LogoProps = HTMLAttributes<HTMLDivElement> & {
    * Omit to auto-swap based on the global `.dark` class on <html>.
    */
   forceTone?: LogoTone;
+  /**
+   * Preload the image (above-the-fold logos only). Default true; pass false
+   * for below-the-fold uses such as the footer.
+   */
+  priority?: boolean;
 };
 
 const SRCS: Record<LogoVariant, { light: string; dark: string }> = {
@@ -47,32 +52,33 @@ export function Logo({
   height = 44,
   variant = 'lockup',
   forceTone,
+  priority = true,
   ...rest
 }: LogoProps) {
   const srcs = SRCS[variant];
-  const alt = variant === 'cube' ? '3D Titans cube' : '3D Titans logo';
+  const alt = '3D Titans';
 
   // Pinned tone — render one image only.
   if (forceTone === 'light') {
     return (
-      <div className={cn('relative shrink-0', className)} style={{ width, height }} {...rest}>
-        <Image src={srcs.dark} alt={alt} fill sizes={`${width}px`} className="object-contain" priority unoptimized />
+      <div className={cn('pixel-art relative shrink-0', className)} style={{ width, height }} {...rest}>
+        <Image src={srcs.dark} alt={alt} fill sizes={`${width}px`} className="object-contain" priority={priority} unoptimized />
       </div>
     );
   }
   if (forceTone === 'dark') {
     return (
-      <div className={cn('relative shrink-0', className)} style={{ width, height }} {...rest}>
-        <Image src={srcs.light} alt={alt} fill sizes={`${width}px`} className="object-contain" priority unoptimized />
+      <div className={cn('pixel-art relative shrink-0', className)} style={{ width, height }} {...rest}>
+        <Image src={srcs.light} alt={alt} fill sizes={`${width}px`} className="object-contain" priority={priority} unoptimized />
       </div>
     );
   }
 
   // Auto-swap based on global theme.
   return (
-    <div className={cn('relative shrink-0', className)} style={{ width, height }} {...rest}>
-      <Image src={srcs.light} alt={alt} fill sizes={`${width}px`} className="object-contain block dark:hidden" priority unoptimized />
-      <Image src={srcs.dark}  alt={alt} fill sizes={`${width}px`} className="object-contain hidden dark:block" priority unoptimized />
+    <div className={cn('pixel-art relative shrink-0', className)} style={{ width, height }} {...rest}>
+      <Image src={srcs.light} alt={alt} fill sizes={`${width}px`} className="object-contain block dark:hidden" priority={priority} unoptimized />
+      <Image src={srcs.dark}  alt={alt} fill sizes={`${width}px`} className="object-contain hidden dark:block" priority={priority} unoptimized />
     </div>
   );
 }

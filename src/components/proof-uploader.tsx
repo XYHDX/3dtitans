@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { Upload, CheckCircle2, Search, Clock } from 'lucide-react';
+import { useId, useState } from 'react';
+import { Upload, CheckCircle2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from '@/components/language-provider';
+import { UploadProgress } from '@/components/upload-progress';
+import { uploadErrorMessage, uploadFileDirect, DirectUploadError } from '@/lib/supabase/direct-upload';
+import { acceptAttribute, allowedExtension, maxMegabytes, UPLOAD_KINDS } from '@/lib/supabase/upload-kinds';
 
 type Props = {
   orderId: string;
-  /** Payment method of the order — Sham Cash gets the automatic check. */
+  /** Payment method of the order (bank_transfer / sham_cash / syriatel_cash). */
   method?: string | null;
-  /** True when Sham Cash payments are verified through the Sham Cash API. */
-  autoVerify?: boolean;
   /** Current payment status, so a returning customer sees the right state. */
   paymentStatus?: string;
   /** Called after the payment is confirmed or submitted for review. */
@@ -19,96 +21,108 @@ type Props = {
 };
 
 /**
- * Confirm a manual payment (bank transfer / Sham Cash / Syriatel Cash).
+ * Confirm a manual payment (bank transfer / Sham Cash / Syriatel Cash):
+ * upload a screenshot and/or a transfer reference; an admin confirms it.
+ * (ShamCash ONLINE payment is a different method with its own panel.)
  *
- * - Sham Cash with the API connected: "I've paid — check now" looks the transfer
- *   up instantly (by the order reference in the transfer note, or the
- *   transaction number the customer types).
- * - Otherwise: upload a screenshot and/or a reference; an admin confirms it.
- *
- * Screenshots are uploaded through /api/storage/upload into a PRIVATE bucket.
+ * Screenshots go straight to the PRIVATE payment-proofs bucket through a
+ * signed upload URL (/api/storage/upload-url), then /api/payments/proof
+ * attaches them to the order.
  */
-export function ProofUploader({ orderId, method, autoVerify, paymentStatus, onStatusChange }: Props) {
+export function ProofUploader({ orderId, paymentStatus, onStatusChange }: Props) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'verifying' | 'paid'>(
     paymentStatus === 'verifying' ? 'verifying' : paymentStatus === 'paid' ? 'paid' : 'idle'
   );
-  const [lastMessage, setLastMessage] = useState('');
-
-  const shamAuto = method === 'sham_cash' && !!autoVerify;
 
   function settle(status: 'paid' | 'verifying') {
     setState(status);
     onStatusChange?.(status);
   }
 
-  async function checkShamCash() {
-    setBusy(true);
-    setLastMessage('');
-    try {
-      const res = await fetch('/api/payments/shamcash/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, transactionId: reference.trim() || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.outcome === 'paid') {
-        settle('paid');
-        toast({ title: 'Payment confirmed', description: 'Thank you! Your order is now paid.' });
-      } else if (data?.outcome === 'needs_review') {
-        settle('verifying');
-        toast({ title: 'Transfer found', description: data.message });
-      } else {
-        setLastMessage(data?.message || data?.error || 'We could not confirm the payment yet.');
-      }
-    } catch {
-      setLastMessage('Could not check right now. Please try again in a minute.');
-    } finally {
-      setBusy(false);
+  function pickFile(f: File | null) {
+    setFormError(null);
+    if (!f) {
+      setFile(null);
+      setFileError(null);
+      return;
     }
+    if (!allowedExtension('proof', f.name)) {
+      setFile(null);
+      setFileError(t('uploads.proof.badType', 'Please choose a JPG, PNG or WEBP image, or a PDF.'));
+      return;
+    }
+    if (f.size > UPLOAD_KINDS.proof.maxBytes) {
+      setFile(null);
+      setFileError(t('uploads.err.tooLarge', 'This file is too large. The maximum is {size} MB.', { size: maxMegabytes('proof') }));
+      return;
+    }
+    setFile(f);
+    setFileError(null);
   }
 
   async function submitProof(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
     if (!file && !reference.trim()) {
-      toast({ variant: 'destructive', title: 'Add proof', description: 'Upload a screenshot or paste a transfer reference.' });
+      const msg = t('uploads.proof.needProof', 'Upload a screenshot or paste a transfer reference.');
+      setFormError(msg);
+      toast({ variant: 'destructive', title: t('uploads.proof.addProofTitle', 'Add proof'), description: msg });
       return;
     }
     setBusy(true);
     try {
       let proofUrl = '';
       if (file) {
-        const form = new FormData();
-        form.append('kind', 'proof');
-        form.append('file', file);
-        const up = await fetch('/api/storage/upload', { method: 'POST', body: form });
-        const upData = await up.json().catch(() => ({}));
-        if (!up.ok || !upData?.url) throw new Error(upData?.error || 'Upload failed');
-        proofUrl = upData.url;
+        setProgress(0);
+        const stored = await uploadFileDirect(file, 'proof', { onProgress: setProgress });
+        proofUrl = stored.url;
       }
 
       const res = await fetch('/api/payments/proof', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, proofUrl: proofUrl || undefined, reference: reference.trim() }),
+      }).catch(() => {
+        throw new DirectUploadError('network');
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Failed to attach proof');
+      if (!res.ok) {
+        // Server messages here are specific (already paid, cancelled, ...).
+        throw new Error(
+          res.status === 401
+            ? t('uploads.err.login', 'Your session has expired. Please log in again and retry.')
+            : data.error || t('uploads.proof.attachFailed', 'We could not attach your proof. Please try again.')
+        );
+      }
 
       if (data.paymentStatus === 'paid') {
         settle('paid');
-        toast({ title: 'Payment confirmed', description: 'Thank you! Your order is now paid.' });
+        toast({
+          title: t('uploads.proof.paidToastTitle', 'Payment confirmed'),
+          description: t('uploads.proof.paidToastDesc', 'Thank you! Your order is now paid.'),
+        });
       } else {
         settle('verifying');
-        toast({ title: 'Proof submitted', description: 'We’ll verify and confirm your order shortly.' });
+        toast({
+          title: t('uploads.proof.sentToastTitle', 'Proof submitted'),
+          description: t('uploads.proof.sentToastDesc', 'We’ll verify it and confirm your order shortly.'),
+        });
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
+      const msg = err instanceof DirectUploadError ? uploadErrorMessage(err, t, 'proof') : err?.message || uploadErrorMessage(err, t, 'proof');
+      setFormError(msg);
+      toast({ variant: 'destructive', title: t('uploads.proof.failTitle', 'Upload failed'), description: msg });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -116,10 +130,10 @@ export function ProofUploader({ orderId, method, autoVerify, paymentStatus, onSt
     return (
       <div className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--accent))]">
         <div className="flex items-center gap-2 mb-1">
-          <CheckCircle2 className="h-5 w-5 text-[hsl(var(--pixel-green))]" />
-          <strong className="font-headline text-sm">PAYMENT CONFIRMED</strong>
+          <CheckCircle2 className="h-5 w-5 text-[hsl(var(--pixel-green))]" aria-hidden="true" />
+          <strong className="font-headline text-sm">{t('uploads.proof.paidTitle', 'PAYMENT CONFIRMED')}</strong>
         </div>
-        <p className="text-xs text-muted-foreground">Thank you — we&rsquo;ll start processing your order.</p>
+        <p className="text-xs text-muted-foreground">{t('uploads.proof.paidBody', 'Thank you — we’ll start processing your order.')}</p>
       </div>
     );
   }
@@ -128,11 +142,11 @@ export function ProofUploader({ orderId, method, autoVerify, paymentStatus, onSt
     return (
       <div className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--accent))]">
         <div className="flex items-center gap-2 mb-1">
-          <Clock className="h-5 w-5" />
-          <strong className="font-headline text-sm">PAYMENT UNDER REVIEW</strong>
+          <Clock className="h-5 w-5" aria-hidden="true" />
+          <strong className="font-headline text-sm">{t('uploads.proof.reviewTitle', 'PAYMENT UNDER REVIEW')}</strong>
         </div>
         <p className="text-xs text-muted-foreground">
-          Our team will verify it within 24 hours. You&rsquo;ll get an email when payment is confirmed.
+          {t('uploads.proof.reviewBody', 'Our team will verify it within 24 hours. You’ll get an email when payment is confirmed.')}
         </p>
       </div>
     );
@@ -144,63 +158,65 @@ export function ProofUploader({ orderId, method, autoVerify, paymentStatus, onSt
       className="border-[3px] border-foreground bg-card p-4 mt-4 shadow-[4px_4px_0_0_hsl(var(--foreground))] dark:shadow-[4px_4px_0_0_hsl(var(--accent))]"
     >
       <div className="flex items-center gap-2 mb-3">
-        <Upload className="h-4 w-4" />
-        <strong className="font-headline text-xs uppercase tracking-wider">Confirm your payment</strong>
+        <Upload className="h-4 w-4" aria-hidden="true" />
+        <strong className="font-headline text-xs uppercase tracking-wider">{t('uploads.proof.title', 'Confirm your payment')}</strong>
       </div>
       <div className="space-y-3">
-        {shamAuto ? (
-          <>
-            <Input
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="Sham Cash transaction number (optional)"
-              aria-label="Sham Cash transaction number"
-              inputMode="numeric"
-            />
-            <Button type="button" onClick={checkShamCash} disabled={busy} className="w-full">
-              <Search className="h-4 w-4 mr-2" />
-              {busy ? 'Checking...' : 'I’ve paid — check now'}
-            </Button>
-            {lastMessage && <p className="text-xs text-destructive">{lastMessage}</p>}
-            <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground">Still not found? Send a screenshot instead</summary>
-              <div className="space-y-3 mt-3">
-                <ScreenshotInput onChange={setFile} />
-                <Button type="submit" variant="outline" disabled={busy} className="w-full">
-                  {busy ? 'Uploading...' : 'Submit screenshot for review'}
-                </Button>
-              </div>
-            </details>
-          </>
-        ) : (
-          <>
-            <ScreenshotInput onChange={setFile} />
-            <Input
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="Or paste a transfer reference number"
-              aria-label="Transfer reference"
-            />
-            <Button type="submit" disabled={busy} className="w-full">
-              {busy ? 'Uploading...' : 'Submit payment proof'}
-            </Button>
-          </>
+        <ScreenshotInput onChange={pickFile} disabled={busy} error={fileError} />
+        <Input
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+          placeholder={t('uploads.proof.referencePlaceholder', 'Or paste a transfer reference number')}
+          aria-label={t('uploads.proof.referenceLabel', 'Transfer reference')}
+          maxLength={200}
+          disabled={busy}
+        />
+        {progress !== null && (
+          <UploadProgress value={progress} label={t('uploads.proof.uploading', 'Uploading screenshot...')} />
         )}
+        {formError && (
+          <p role="alert" className="text-xs text-destructive">
+            {formError}
+          </p>
+        )}
+        <Button type="submit" disabled={busy} className="w-full">
+          {busy ? t('uploads.proof.submitting', 'Sending...') : t('uploads.proof.submit', 'Submit payment proof')}
+        </Button>
       </div>
     </form>
   );
 }
 
-function ScreenshotInput({ onChange }: { onChange: (f: File | null) => void }) {
+function ScreenshotInput({
+  onChange,
+  disabled,
+  error,
+}: {
+  onChange: (f: File | null) => void;
+  disabled?: boolean;
+  error?: string | null;
+}) {
+  const { t } = useTranslation();
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
-    <label className="block text-xs">
-      <span className="font-headline uppercase tracking-wider text-[10px]">Screenshot of transfer</span>
+    <div className="text-xs">
+      <label htmlFor={id} className="font-headline uppercase tracking-wider text-[10px]">
+        {t('uploads.proof.screenshotLabel', 'Screenshot of transfer')}
+      </label>
       <input
+        id={id}
         type="file"
-        accept="image/*,application/pdf"
+        accept={acceptAttribute('proof')}
+        disabled={disabled}
+        aria-describedby={hintId}
+        aria-invalid={!!error}
         onChange={(e) => onChange(e.target.files?.[0] || null)}
-        className="block w-full mt-1 text-xs file:mr-3 file:border-[2px] file:border-foreground file:bg-background file:text-foreground file:px-3 file:py-1 file:font-headline file:text-[10px] file:cursor-pointer hover:file:bg-accent"
+        className="block w-full mt-1 text-xs file:me-3 file:border-[2px] file:border-foreground file:bg-background file:text-foreground file:px-3 file:py-1 file:font-headline file:text-[10px] file:cursor-pointer hover:file:bg-accent"
       />
-    </label>
+      <p id={hintId} className={error ? 'mt-1 text-destructive' : 'mt-1 text-muted-foreground'} role={error ? 'alert' : undefined}>
+        {error || t('uploads.proof.hint', 'JPG, PNG, WEBP or PDF, up to {size} MB.', { size: maxMegabytes('proof') })}
+      </p>
+    </div>
   );
 }

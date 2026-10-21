@@ -1,4 +1,5 @@
 'use client';
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -7,34 +8,50 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteSettings } from "@/hooks/use-data";
-import { useContactSubmissions } from "@/hooks/use-data";
 import { useTranslation } from "@/components/language-provider";
+import { WhatsAppIcon } from "@/components/whatsapp-button";
+import { localizedSetting, whatsappHref } from "@/lib/site-settings-shared";
+import { track } from "@/lib/analytics";
 
-const contactSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters."),
-  email: z.string().email("Please enter a valid email address."),
-  subject: z.string().min(5, "Subject must be at least 5 characters."),
-  message: z.string().min(10, "Message must be at least 10 characters."),
-});
-
-type ContactFormData = z.infer<typeof contactSchema>;
+type ContactFormData = {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  /** Honeypot (M-10): hidden from people; bots that fill it are dropped by the API. */
+  website?: string;
+};
 
 export default function AboutPage() {
   const { data: settings } = useSiteSettings();
-  const { submitContact } = useContactSubmissions({ skipFetch: true });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { t } = useTranslation();
-  const heroTitle = settings?.aboutHeroTitle || t('about.defaultHeroTitle');
-  const heroSubtitle = settings?.aboutHeroSubtitle || t('about.defaultHeroSubtitle');
-  const missionTitle = settings?.aboutMissionTitle || t('about.defaultMissionTitle');
-  const missionBody = settings?.aboutMission || t('about.defaultMission');
-  const contactTitle = settings?.aboutContactTitle || t('about.defaultContactTitle');
-  const contactBody = settings?.aboutContact || t('about.defaultContact');
-  const contactCardTitle = settings?.aboutContactCardTitle || t('about.defaultContactCard');
+  const { t, locale } = useTranslation();
+
+  // Admin texts per language (…Ar fields for Arabic); translated defaults otherwise.
+  const heroTitle = localizedSetting(settings, 'aboutHeroTitle', locale) || t('about.defaultHeroTitle');
+  const heroSubtitle = localizedSetting(settings, 'aboutHeroSubtitle', locale) || t('about.defaultHeroSubtitle');
+  const missionTitle = localizedSetting(settings, 'aboutMissionTitle', locale) || t('about.defaultMissionTitle');
+  const missionBody = localizedSetting(settings, 'aboutMission', locale) || t('about.defaultMission');
+  const contactTitle = localizedSetting(settings, 'aboutContactTitle', locale) || t('about.defaultContactTitle');
+  const contactBody = localizedSetting(settings, 'aboutContact', locale) || t('about.defaultContact');
+  const contactCardTitle = localizedSetting(settings, 'aboutContactCardTitle', locale) || t('about.defaultContactCard');
+  const waHref = whatsappHref(settings?.whatsappNumber, t('whatsapp.prefill'));
+
+  // Limits match the API (src/app/api/contact/route.ts).
+  const contactSchema = useMemo(
+    () =>
+      z.object({
+        name: z.string().trim().min(2, t('about.form.errors.name')).max(100, t('about.form.errors.tooLong')),
+        email: z.string().trim().email(t('about.form.errors.email')).max(254, t('about.form.errors.tooLong')),
+        subject: z.string().trim().min(3, t('about.form.errors.subject')).max(200, t('about.form.errors.tooLong')),
+        message: z.string().trim().min(10, t('about.form.errors.message')).max(5000, t('about.form.errors.tooLong')),
+        website: z.string().optional(),
+      }),
+    [t]
+  );
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
@@ -43,74 +60,96 @@ export default function AboutPage() {
   const onSubmit = async (data: ContactFormData) => {
     setLoading(true);
     try {
-      const saved = await submitContact({
-        ...data,
-      } as any);
-      if (!saved) {
-        throw new Error('Could not submit contact form');
-      }
-      toast({
-        title: "Message Sent!",
-        description: "Thank you for contacting us. We'll get back to you shortly.",
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
       });
+      if (res.status === 429) {
+        toast({ variant: 'destructive', title: t('about.form.failedTitle'), description: t('about.form.tooMany') });
+        return;
+      }
+      if (!res.ok) throw new Error('Could not submit contact form');
+      track('generate_lead', { lead_type: 'contact' });
+      toast({ title: t('about.form.sentTitle'), description: t('about.form.sentDesc') });
       reset();
+    } catch {
+      toast({ variant: 'destructive', title: t('about.form.failedTitle'), description: t('about.form.failedDesc') });
     } finally {
       setLoading(false);
     }
   };
 
+  const fieldError = (message?: string) =>
+    message ? <p className="text-xs font-semibold text-destructive" role="alert">{message}</p> : null;
+
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16">
-        <h1 className="font-headline text-5xl">{heroTitle}</h1>
-        <p className="text-muted-foreground mt-2 text-lg">{heroSubtitle}</p>
+        <h1 className="font-headline text-3xl md:text-5xl">{heroTitle}</h1>
+        <p className="text-muted-foreground mt-4 text-lg">{heroSubtitle}</p>
       </div>
-      
+
       <div className="max-w-4xl mx-auto mb-16">
-        <h2 className="font-headline text-4xl text-center mb-8">{missionTitle}</h2>
-        <p className="text-lg text-muted-foreground text-center">
+        <h2 className="font-headline text-2xl md:text-4xl text-center mb-8">{missionTitle}</h2>
+        <p className="text-lg text-muted-foreground text-center whitespace-pre-line">
           {missionBody}
         </p>
       </div>
 
-      <div className="bg-card p-8 md:p-12 rounded-lg">
-        <h2 className="font-headline text-4xl text-center mb-8">{contactTitle}</h2>
-        <p className="text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
+      <section id="contact" aria-labelledby="contact-title" className="bg-card p-6 md:p-12 border-[3px] border-foreground scroll-mt-24">
+        <h2 id="contact-title" className="font-headline text-2xl md:text-4xl text-center mb-8">{contactTitle}</h2>
+        <p className="text-muted-foreground text-center mb-8 max-w-2xl mx-auto whitespace-pre-line">
           {contactBody}
         </p>
+        {waHref && (
+          <div className="flex justify-center mb-8">
+            <Button asChild variant="outline" size="lg">
+              <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={() => track('generate_lead', { lead_type: 'contact' })}>
+                <WhatsAppIcon className="h-5 w-5" />
+                {t('about.whatsappCta')}
+              </a>
+            </Button>
+          </div>
+        )}
         <Card className="max-w-xl mx-auto">
           <CardHeader>
             <CardTitle>{contactCardTitle}</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="relative grid gap-4" noValidate>
               <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" {...register('name')} />
-                {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+                <Label htmlFor="name">{t('about.form.name')}</Label>
+                <Input id="name" autoComplete="name" aria-invalid={!!errors.name} {...register('name')} />
+                {fieldError(errors.name?.message)}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...register('email')} />
-                {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+                <Label htmlFor="email">{t('about.form.email')}</Label>
+                <Input id="email" type="email" dir="ltr" autoComplete="email" aria-invalid={!!errors.email} {...register('email')} />
+                {fieldError(errors.email?.message)}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="subject">Subject</Label>
-                <Input id="subject" {...register('subject')} />
-                {errors.subject && <p className="text-xs text-destructive">{errors.subject.message}</p>}
+                <Label htmlFor="subject">{t('about.form.subject')}</Label>
+                <Input id="subject" aria-invalid={!!errors.subject} {...register('subject')} />
+                {fieldError(errors.subject?.message)}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="message">Message</Label>
-                <Textarea id="message" {...register('message')} rows={5} />
-                {errors.message && <p className="text-xs text-destructive">{errors.message.message}</p>}
+                <Label htmlFor="message">{t('about.form.message')}</Label>
+                <Textarea id="message" rows={5} aria-invalid={!!errors.message} {...register('message')} />
+                {fieldError(errors.message?.message)}
+              </div>
+              {/* Honeypot: off-screen and hidden from assistive tech; people never fill it. */}
+              <div aria-hidden="true" className="absolute -start-[10000px] top-auto h-px w-px overflow-hidden">
+                <label htmlFor="contact-website">{t('form.honeypotLabel')}</label>
+                <input id="contact-website" type="text" tabIndex={-1} autoComplete="off" {...register('website')} />
               </div>
               <Button type="submit" disabled={loading}>
-                {loading ? 'Sending...' : 'Send Message'}
+                {loading ? t('about.form.sending') : t('about.form.send')}
               </Button>
             </form>
           </CardContent>
         </Card>
-      </div>
+      </section>
     </div>
   );
 }

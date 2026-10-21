@@ -7,17 +7,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import Link from 'next/link';
-import { format } from 'date-fns';
+import { useTranslation } from '@/components/language-provider';
+import { UploadRequestDetails, useFormatUploadDate } from '@/components/admin/upload-request-details';
 
 export default function StoreUploadsPage() {
   const { user } = useSessionUser();
+  const { t } = useTranslation();
+  const formatDate = useFormatUploadDate();
   const { data: uploads, loading: uploadsLoading } = useUploads();
 
   if (!user) {
     return (
       <div className="text-center py-16">
-        <p className="text-muted-foreground">Please log in to view assigned uploads.</p>
+        <p className="text-muted-foreground">{t('uploads.owner.loginRequired', 'Please log in to view assigned uploads.')}</p>
       </div>
     );
   }
@@ -25,8 +27,8 @@ export default function StoreUploadsPage() {
   if (user.role !== 'store-owner') {
     return (
       <div className="text-center py-16">
-        <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
-        <p className="text-muted-foreground mt-4">This page is only for store owners.</p>
+        <h1 className="text-3xl font-bold tracking-tight">{t('uploads.common.accessDenied', 'Access denied')}</h1>
+        <p className="text-muted-foreground mt-4">{t('uploads.store.ownersOnly', 'This page is only available for store owners.')}</p>
       </div>
     );
   }
@@ -34,17 +36,17 @@ export default function StoreUploadsPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Assigned Uploads</CardTitle>
-        <CardDescription>Files assigned to you by an admin.</CardDescription>
+        <CardTitle>{t('uploads.owner.title', 'Assigned print requests')}</CardTitle>
+        <CardDescription>{t('uploads.owner.desc', 'Files an admin assigned to you.')}</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>File Name</TableHead>
-              <TableHead>Date Uploaded</TableHead>
-              <TableHead className="text-right">Download</TableHead>
+              <TableHead>{t('uploads.admin.colCustomer', 'Customer')}</TableHead>
+              <TableHead>{t('uploads.admin.colRequest', 'Request')}</TableHead>
+              <TableHead>{t('uploads.admin.colDate', 'Date')}</TableHead>
+              <TableHead className="text-end">{t('uploads.owner.colDownload', 'Download')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -54,34 +56,32 @@ export default function StoreUploadsPage() {
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                  <TableCell className="text-end"><Skeleton className="h-8 w-16 ms-auto" /></TableCell>
                 </TableRow>
               ))
             ) : uploads && uploads.length > 0 ? (
               uploads.map((upload) => (
                 <TableRow key={upload.id}>
-                  <TableCell>
-                    <div className="font-medium">{upload.userDisplayName || 'N/A'}</div>
-                    <div className="text-xs text-muted-foreground">{upload.userEmail}</div>
+                  <TableCell className="align-top">
+                    <div className="font-medium">{upload.userDisplayName || t('uploads.common.na', 'N/A')}</div>
+                    <div className="text-xs text-muted-foreground break-all">{upload.userEmail}</div>
+                    {upload.phoneNumber ? (
+                      <div className="text-xs text-muted-foreground" dir="ltr">{upload.phoneNumber}</div>
+                    ) : null}
                   </TableCell>
-                  <TableCell>{upload.fileName}</TableCell>
-                  <TableCell>
-                    {upload.createdAt
-                      ? (() => {
-                          const raw = typeof upload.createdAt === 'object' && 'toDate' in upload.createdAt
-                            ? (upload.createdAt as any).toDate()
-                            : new Date(upload.createdAt as any);
-                          const d = raw instanceof Date ? raw : new Date(raw);
-                          return isNaN(d.getTime()) ? 'N/A' : format(d, 'PPP');
-                        })()
-                      : 'N/A'}
+                  <TableCell className="align-top min-w-[14rem]">
+                    <UploadRequestDetails upload={upload} />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="align-top">{formatDate(upload.createdAt)}</TableCell>
+                  <TableCell className="text-end align-top">
                     <Button asChild variant="ghost" size="icon">
-                      <Link href={upload.downloadURL} target="_blank" rel="noopener noreferrer">
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download</span>
-                      </Link>
+                      {/* Private file: the route checks the assignment and redirects to a 5-minute signed link. */}
+                      <a href={`/api/uploads/${encodeURIComponent(upload.id)}/download`} target="_blank" rel="noopener noreferrer">
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                        <span className="sr-only">
+                          {t('uploads.admin.downloadAria', 'Download {file}', { file: upload.fileName })}
+                        </span>
+                      </a>
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -89,7 +89,7 @@ export default function StoreUploadsPage() {
             ) : (
               <TableRow>
                 <TableCell colSpan={4} className="text-center h-24">
-                  No uploads assigned to you.
+                  {t('uploads.owner.empty', 'No uploads assigned to you.')}
                 </TableCell>
               </TableRow>
             )}

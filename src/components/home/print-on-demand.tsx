@@ -7,11 +7,11 @@ import { useTranslation } from '../language-provider';
 export function PrintOnDemand() {
   const { t } = useTranslation();
   return (
-    <section className="py-16 md:py-24 my-16 border-[4px] border-foreground shadow-[10px_10px_0_0_hsl(var(--foreground))] dark:shadow-[10px_10px_0_0_hsl(var(--accent))] w-full overflow-hidden" style={{ background: 'hsl(var(--kraft-cardboard))' }}>
+    <section aria-labelledby="print-title" className="py-16 md:py-24 my-16 border-[4px] border-foreground shadow-[10px_10px_0_0_hsl(var(--foreground))] dark:shadow-[10px_10px_0_0_hsl(var(--accent))] w-full overflow-hidden" style={{ background: 'hsl(var(--kraft-cardboard))' }}>
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-12 items-center">
         <div className="flex justify-center">
           {/* Pixel-art printed-figurine illustration */}
-          <svg width="260" height="260" viewBox="0 0 32 32" shapeRendering="crispEdges" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
+          <svg width="260" height="260" viewBox="0 0 32 32" shapeRendering="crispEdges" xmlns="http://www.w3.org/2000/svg" className="pixel-art max-w-full h-auto" aria-hidden="true" focusable="false">
             {/* Box */}
             <rect x="2" y="14" width="28" height="16" fill="#E6D5B8" stroke="#0F0F11" strokeWidth="1"/>
             <rect x="2" y="14" width="28" height="2" fill="#C29B6C"/>
@@ -24,16 +24,18 @@ export function PrintOnDemand() {
             <rect x="10" y="15" width="12" height="6" fill="#C44536"/>
             <rect x="14" y="18" width="4" height="1" fill="#FFC107"/>
             {/* Label sticker */}
-            <rect x="4" y="24" width="10" height="4" fill="#FFC107" stroke="#0F0F11" strokeWidth="1"/>
-            <text x="9" y="27" textAnchor="middle" fontFamily="monospace" fontSize="2" fill="#0F0F11" fontWeight="bold">3D TITANS</text>
+            {/* textLength pins the word to the sticker width whatever font loads,
+                so "3D TITANS" can never spill out of (or be clipped by) the label. */}
+            <rect x="4" y="23.5" width="14" height="4.5" fill="#FFC107" stroke="#0F0F11" strokeWidth="1"/>
+            <text x="11" y="26.75" textAnchor="middle" direction="ltr" fontSize="2" fill="#0F0F11" textLength="11" lengthAdjust="spacingAndGlyphs" style={{ fontFamily: 'var(--font-press-start), monospace' }}>3D TITANS</text>
           </svg>
         </div>
-        <div className="text-center md:text-left">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="font-headline text-xs px-3 py-2 bg-foreground text-background">03</span>
-            <span className="sticker">PRINT READY</span>
+        <div className="text-center md:text-start">
+          <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
+            <span aria-hidden className="font-headline text-xs px-3 py-2 bg-foreground text-background">03</span>
+            <span className="sticker">{t('print.sticker')}</span>
           </div>
-          <h2 className="font-headline text-2xl md:text-4xl mt-4">
+          <h2 id="print-title" className="font-headline text-2xl md:text-4xl mt-4">
             {t('print.title')}
           </h2>
           <p className="mt-3 text-base font-bold">{t('print.subtitle')}</p>

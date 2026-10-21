@@ -14,33 +14,53 @@ import { useSessionUser } from '@/hooks/use-session';
  * every other card showing the same product.
  */
 const STORE: Set<string> = new Set();
-let loaded = false;
+/** User whose wishlist is in STORE (null = nothing loaded). */
+let loadedFor: string | null = null;
+/** One shared request, so a grid of 24 cards doesn't fire 24 identical fetches. */
+let inflight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((l) => l());
 }
 
-async function load() {
-  try {
-    const res = await fetch('/api/wishlist');
-    if (!res.ok) return;
-    const data = await res.json();
-    STORE.clear();
-    (data.items || []).forEach((it: any) => STORE.add(it.id));
-    loaded = true;
-    emit();
-  } catch {}
+function load(userId: string): Promise<void> {
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const res = await fetch('/api/wishlist', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      STORE.clear();
+      (data.items || []).forEach((it: any) => STORE.add(it.id));
+      loadedFor = userId;
+      emit();
+    } catch {
+      // Keep whatever we had; the next mount retries.
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 export function useWishlist() {
   const { user } = useSessionUser();
+  const userId = user?.id || null;
   const [, force] = useState(0);
 
-  // Load once when user becomes available
+  // Load once per signed-in user; forget the previous user's hearts on logout / switch.
   useEffect(() => {
-    if (user && !loaded) load();
-  }, [user]);
+    if (!userId) {
+      if (loadedFor !== null || STORE.size > 0) {
+        STORE.clear();
+        loadedFor = null;
+        emit();
+      }
+      return;
+    }
+    if (loadedFor !== userId) load(userId);
+  }, [userId]);
 
   // Subscribe to store updates
   useEffect(() => {
@@ -86,7 +106,7 @@ export function useWishlist() {
     [user]
   );
 
-  const refresh = useCallback(() => load(), []);
+  const refresh = useCallback(() => (userId ? load(userId) : Promise.resolve()), [userId]);
 
   return { isWishlisted, toggle, refresh, count: STORE.size };
 }

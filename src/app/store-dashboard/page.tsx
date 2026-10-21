@@ -1,4 +1,3 @@
-
 'use client';
 import { useCurrency } from '@/hooks/use-currency';
 import { useMemo, useState } from 'react';
@@ -11,15 +10,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useOrders, useUploads, useStores } from '@/hooks/use-data';
-import { format } from 'date-fns';
+import { useTranslation } from '@/components/language-provider';
+import { ArchivedBadge, RestoreProductButton, activeFirst, isArchivedProduct } from '@/components/admin/product-archive';
+
+const linkClass = 'underline decoration-primary decoration-2 underline-offset-4 text-foreground';
 
 export default function StoreDashboardPage() {
   const { format: formatPrice } = useCurrency();
     const { user } = useSessionUser();
-    const { data: products, loading: productsLoading } = useProducts(
+    const { t, locale } = useTranslation();
+    const { data: products, loading: productsLoading, refresh: refreshProducts } = useProducts(
         user?.role === 'store-owner' && user?.id ? { uploaderId: user.id } : undefined
     );
-    const { data: assignedOrders, loading: assignedOrdersLoading } = useOrders(
+    const { data: assignedOrders, loading: assignedOrdersLoading, hasMore: moreOrders } = useOrders(
         user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : undefined
     );
     const { data: assignedUploads, loading: uploadsLoading } = useUploads();
@@ -32,6 +35,10 @@ export default function StoreDashboardPage() {
     const store = ownerStores?.[0];
     const [productSort, setProductSort] = useState<'recent' | 'price-desc' | 'price-asc' | 'alpha'>('recent');
 
+    // Archived products are out of the shop: not counted, listed after active ones.
+    const archivedCount = useMemo(() => (products || []).filter(isArchivedProduct).length, [products]);
+    const activeCount = (products?.length || 0) - archivedCount;
+
     const getDateValue = (value?: any) => {
         if (!value) return 0;
         const raw = typeof value === 'object' && 'toDate' in value ? value.toDate() : new Date(value as any);
@@ -42,17 +49,18 @@ export default function StoreDashboardPage() {
     const formatDate = (value?: any) => {
         const ts = getDateValue(value);
         if (!ts) return '—';
-        return format(new Date(ts), 'PPP');
+        return new Date(ts).toLocaleDateString(locale === 'ar' ? 'ar-SY' : 'en-US', { dateStyle: 'medium' });
     };
 
     const sortedProducts = useMemo(() => {
         const list = products || [];
-        return [...list].sort((a, b) => {
+        const sorted = [...list].sort((a, b) => {
             if (productSort === 'alpha') return a.name.localeCompare(b.name);
             if (productSort === 'price-asc') return a.price - b.price;
             if (productSort === 'price-desc') return b.price - a.price;
             return getDateValue(b.createdAt) - getDateValue(a.createdAt);
         });
+        return activeFirst(sorted);
     }, [products, productSort]);
 
     if (!user) {
@@ -60,26 +68,26 @@ export default function StoreDashboardPage() {
             <div className='max-w-md mx-auto mt-16'>
                 <Card>
                     <CardHeader>
-                        <CardTitle>Please Log In</CardTitle>
-                        <CardDescription>You need to be logged in to view your store dashboard.</CardDescription>
+                        <CardTitle>{t('uploads.store.loginTitle', 'Please log in')}</CardTitle>
+                        <CardDescription>{t('uploads.dash.loginDesc', 'You need to be logged in to view your store dashboard.')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Button asChild className='w-full'>
-                            <Link href="/login">Login</Link>
+                            <Link href="/login?next=/store-dashboard">{t('uploads.products.loginLink', 'Log in')}</Link>
                         </Button>
                     </CardContent>
                 </Card>
             </div>
         )
     }
-    
+
     if (user.role !== 'store-owner') {
          return (
             <div className='max-w-md mx-auto mt-16'>
                 <Card>
                     <CardHeader>
-                        <CardTitle>Access Denied</CardTitle>
-                        <CardDescription>This dashboard is only available to store owners.</CardDescription>
+                        <CardTitle>{t('uploads.common.accessDenied', 'Access denied')}</CardTitle>
+                        <CardDescription>{t('uploads.store.ownersOnly', 'This page is only available for store owners.')}</CardDescription>
                     </CardHeader>
                 </Card>
             </div>
@@ -89,27 +97,27 @@ export default function StoreDashboardPage() {
     return (
         <div>
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Store Dashboard</h1>
+                <h1 className="text-3xl font-bold tracking-tight">{t('uploads.dash.title', 'Store dashboard')}</h1>
                 <p className="text-muted-foreground">
-                    Welcome back, {user.displayName || 'Store Owner'}.
+                    {t('uploads.dash.welcome', 'Welcome back, {name}.', { name: user.displayName || t('uploads.dash.ownerFallback', 'store owner') })}
                 </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2 mt-8">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            Store Profile
+                            {t('uploads.store.title', 'Store profile')}
                         </CardTitle>
-                        <Home className="h-4 w-4 text-muted-foreground" />
+                        <Home className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </CardHeader>
                     <CardContent>
                         {isLoading ? <Skeleton className="h-8 w-16" /> : (
-                            <div className="text-2xl font-bold">{store?.name || 'Not set'}</div>
+                            <div className="text-2xl font-bold">{store?.name || t('uploads.dash.notSet', 'Not set')}</div>
                         )}
                         <p className="text-xs text-muted-foreground flex items-center gap-2">
-                           {store?.isPublished ? 'Published' : 'Draft'}
-                           <Link href="/store-dashboard/profile" className="underline">
-                             Edit profile
+                           {store?.isPublished ? t('uploads.store.published', 'Published') : t('uploads.store.draft', 'Draft')}
+                           <Link href="/store-dashboard/profile" className={linkClass}>
+                             {t('uploads.dash.editProfile', 'Edit profile')}
                            </Link>
                         </p>
                     </CardContent>
@@ -117,42 +125,54 @@ export default function StoreDashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            My Products
+                            {t('uploads.archive.dashActiveProducts', 'Products in the shop')}
                         </CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <Package className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{products?.length || 0}</div>}
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{activeCount}</div>}
                         <p className="text-xs text-muted-foreground">
-                           Products you have uploaded. <Link href="/admin/products" className="underline">Manage</Link>
+                           {archivedCount > 0
+                             ? t('uploads.archive.dashArchivedCount', '+ {count} archived', { count: archivedCount }) + ' · '
+                             : null}
+                           <Link href="/admin/products" className={linkClass}>{t('uploads.dash.manage', 'Manage')}</Link>
                         </p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            My Assigned Orders
+                            {t('uploads.dash.assignedOrders', 'My assigned orders')}
                         </CardTitle>
-                        <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                        <ShoppingBag className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{assignedOrders?.length || 0}</div>}
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : (
+                            <div className="text-2xl font-bold">
+                                {/* The orders API returns the newest 100 only. */}
+                                {moreOrders
+                                    ? t('uploads.dash.countPlus', '{count}+', { count: assignedOrders?.length || 0 })
+                                    : assignedOrders?.length || 0}
+                            </div>
+                        )}
                          <p className="text-xs text-muted-foreground">
-                           Orders assigned to you. <Link href="/admin/orders" className="underline">View Orders</Link>
+                           {t('uploads.dash.assignedOrdersDesc', 'Orders assigned to you.')}{' '}
+                           <Link href="/admin/orders" className={linkClass}>{t('uploads.dash.viewOrders', 'View orders')}</Link>
                         </p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            My Assigned Uploads
+                            {t('uploads.owner.title', 'Assigned print requests')}
                         </CardTitle>
-                        <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                        <UploadCloud className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </CardHeader>
                     <CardContent>
                         {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{assignedUploads?.length || 0}</div>}
                          <p className="text-xs text-muted-foreground">
-                           Uploads assigned to you. <Link href="/store-dashboard/uploads" className="underline">View Uploads</Link>
+                           {t('uploads.owner.desc', 'Files an admin assigned to you.')}{' '}
+                           <Link href="/store-dashboard/uploads" className={linkClass}>{t('uploads.dash.viewUploads', 'View requests')}</Link>
                         </p>
                     </CardContent>
                 </Card>
@@ -161,24 +181,26 @@ export default function StoreDashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <CardTitle>Products</CardTitle>
-                            <CardDescription>Sort your catalogue without leaving the dashboard.</CardDescription>
+                            <CardTitle>{t('uploads.dash.productsTitle', 'Products')}</CardTitle>
+                            <CardDescription>
+                                {t('uploads.dash.productsDesc', 'Your catalogue. Archived products are hidden from the shop and listed last.')}
+                            </CardDescription>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
                             <Button asChild variant="outline" size="sm">
-                                <Link href="/admin/products">Manage</Link>
+                                <Link href="/admin/products">{t('uploads.dash.manage', 'Manage')}</Link>
                             </Button>
                             <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Sort by</span>
+                                <span className="text-sm text-muted-foreground" id="product-sort-label">{t('uploads.dash.sortBy', 'Sort by')}</span>
                                 <Select value={productSort} onValueChange={(value) => setProductSort(value as 'recent' | 'price-desc' | 'price-asc' | 'alpha')}>
-                                    <SelectTrigger className="w-[180px]">
+                                    <SelectTrigger className="w-[180px]" aria-labelledby="product-sort-label">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="recent">Newest first</SelectItem>
-                                        <SelectItem value="alpha">Name (A-Z)</SelectItem>
-                                        <SelectItem value="price-desc">Price (high to low)</SelectItem>
-                                        <SelectItem value="price-asc">Price (low to high)</SelectItem>
+                                        <SelectItem value="recent">{t('uploads.dash.sortRecent', 'Newest first')}</SelectItem>
+                                        <SelectItem value="alpha">{t('uploads.dash.sortAlpha', 'Name (A–Z)')}</SelectItem>
+                                        <SelectItem value="price-desc">{t('uploads.dash.sortPriceDesc', 'Price (high to low)')}</SelectItem>
+                                        <SelectItem value="price-asc">{t('uploads.dash.sortPriceAsc', 'Price (low to high)')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -188,10 +210,13 @@ export default function StoreDashboardPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Price</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead>Added</TableHead>
+                                    <TableHead>{t('uploads.products.colName', 'Name')}</TableHead>
+                                    <TableHead>{t('uploads.products.colPrice', 'Price')}</TableHead>
+                                    <TableHead>{t('uploads.products.category', 'Category')}</TableHead>
+                                    <TableHead>{t('uploads.products.colDate', 'Date added')}</TableHead>
+                                    <TableHead className="text-end">
+                                        <span className="sr-only">{t('uploads.products.colManage', 'Manage')}</span>
+                                    </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -202,21 +227,35 @@ export default function StoreDashboardPage() {
                                             <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                                             <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                                             <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                                            <TableCell />
                                         </TableRow>
                                     ))
                                 ) : sortedProducts.length > 0 ? (
-                                    sortedProducts.map((product) => (
-                                        <TableRow key={product.id}>
-                                            <TableCell className="font-medium">{product.name}</TableCell>
-                                            <TableCell>{formatPrice(product.price)}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
-                                            <TableCell>{formatDate(product.createdAt)}</TableCell>
-                                        </TableRow>
-                                    ))
+                                    sortedProducts.map((product) => {
+                                        const archived = isArchivedProduct(product);
+                                        return (
+                                            <TableRow key={product.id} className={archived ? 'bg-muted/40 text-muted-foreground' : ''}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span>{product.name}</span>
+                                                        {archived && <ArchivedBadge />}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{formatPrice(product.price)}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
+                                                <TableCell>{formatDate(product.createdAt)}</TableCell>
+                                                <TableCell className="text-end">
+                                                    {archived ? (
+                                                        <RestoreProductButton product={product} onRestored={refreshProducts} />
+                                                    ) : null}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center h-16 text-muted-foreground">
-                                            No products found.
+                                        <TableCell colSpan={5} className="text-center h-16 text-muted-foreground">
+                                            {t('uploads.products.empty', 'No products found.')}
                                         </TableCell>
                                     </TableRow>
                                 )}

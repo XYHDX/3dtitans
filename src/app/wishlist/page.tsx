@@ -9,12 +9,14 @@ import { Button } from '@/components/ui/button';
 import { useSessionUser } from '@/hooks/use-session';
 import { useWishlist } from '@/hooks/use-wishlist';
 import type { Product } from '@/lib/types';
+import { useTranslation } from '@/components/language-provider';
 
 export default function WishlistPage() {
   const { user } = useSessionUser();
   const { refresh } = useWishlist();
   const [items, setItems] = useState<Product[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     let cancelled = false;
@@ -53,19 +55,21 @@ export default function WishlistPage() {
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-4 mb-10">
-        <span className="font-headline text-xs px-3 py-2 bg-foreground text-background">WL</span>
+        <span className="font-headline text-xs px-3 py-2 bg-foreground text-background" aria-hidden="true">
+          <Heart className="h-4 w-4" />
+        </span>
         <div>
-          <h1 className="font-headline text-3xl md:text-4xl">My Wishlist</h1>
-          <p className="text-muted-foreground mt-2 text-sm">Models you saved for later.</p>
+          <h1 className="font-headline text-3xl md:text-4xl">{t('wishlistPage.title', 'My wishlist')}</h1>
+          <p className="text-muted-foreground mt-2 text-sm">{t('wishlistPage.subtitle', 'Products you saved for later.')}</p>
         </div>
       </div>
 
       {!user ? (
         <div className="border-[3px] border-dashed border-foreground/30 p-10 text-center">
-          <Heart className="h-10 w-10 mx-auto mb-3 text-foreground/40" />
-          <p className="mb-4 text-sm">Sign in to view and save your wishlist.</p>
+          <Heart className="h-10 w-10 mx-auto mb-3 text-foreground/40" aria-hidden="true" />
+          <p className="mb-4 text-sm">{t('wishlistPage.loginPrompt', 'Log in to view and save your wishlist.')}</p>
           <Button asChild>
-            <Link href="/login">Sign in</Link>
+            <Link href={`/login?next=${encodeURIComponent('/wishlist')}`}>{t('nav.login')}</Link>
           </Button>
         </div>
       ) : loading ? (
@@ -84,10 +88,10 @@ export default function WishlistPage() {
         </div>
       ) : (
         <div className="border-[3px] border-dashed border-foreground/30 p-10 text-center">
-          <Heart className="h-10 w-10 mx-auto mb-3 text-foreground/40" />
-          <p className="mb-4 text-sm">Your wishlist is empty. Tap the heart on any model to save it.</p>
+          <Heart className="h-10 w-10 mx-auto mb-3 text-foreground/40" aria-hidden="true" />
+          <p className="mb-4 text-sm">{t('wishlistPage.empty', 'Your wishlist is empty. Tap the heart on any product to save it.')}</p>
           <Button asChild>
-            <Link href="/products">Browse models</Link>
+            <Link href="/products">{t('wishlistPage.browse', 'Browse products')}</Link>
           </Button>
         </div>
       )}

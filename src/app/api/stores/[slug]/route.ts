@@ -2,6 +2,11 @@ import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
+import { PRIVATE_CACHE_CONTROL, PUBLIC_CACHE_CONTROL } from '@/app/products/_lib/http-cache';
+
+// Never pre-rendered or cached by Next itself; CDN caching is set per response below.
+export const dynamic = 'force-dynamic';
 
 function slugify(input: string) {
   return input
@@ -35,32 +40,45 @@ function canManage(user: any, store: any) {
   return false;
 }
 
+/**
+ * GET /api/stores/[slug]
+ *
+ * Published store → public, cached on the CDN. A draft store is visible only
+ * to its owner or an admin (response never cached); everyone else gets 404.
+ */
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   try {
-    const session = await getServerSession(authOptions);
-    const user = session?.user;
+    const store = await prisma.store.findUnique({ where: { slug: slug } });
+    if (!store) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404, headers: { 'Cache-Control': PRIVATE_CACHE_CONTROL } });
+    }
 
-    const store = await prisma.store.findUnique({
-      where: { slug: slug },
-      include: { _count: { select: { products: true } } },
-    });
-    if (!store) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-    if (!store.isPublished && !canManage(user, store)) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // Only drafts need the session — published stores stay cookie-independent and cacheable.
+    if (!store.isPublished) {
+      const session = await getServerSession(authOptions);
+      if (!canManage(session?.user, store)) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404, headers: { 'Cache-Control': PRIVATE_CACHE_CONTROL } });
+      }
     }
 
     const extraCount = await prisma.product.count({
       where: {
+        archivedAt: null,
         OR: [{ storeId: store.id }, { uploaderId: store.ownerId }],
       },
     });
 
-    return NextResponse.json({ store: mapStore(store, extraCount) });
+    return NextResponse.json(
+      { store: mapStore(store, extraCount) },
+      { headers: { 'Cache-Control': store.isPublished ? PUBLIC_CACHE_CONTROL : PRIVATE_CACHE_CONTROL } }
+    );
   } catch (error) {
     console.error('Store GET failed', error);
-    return NextResponse.json({ error: 'Failed to load store' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to load store' },
+      { status: 500, headers: { 'Cache-Control': PRIVATE_CACHE_CONTROL } }
+    );
   }
 }
 
@@ -109,6 +127,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
       },
     });
 
+    // Server-rendered store pages cache for 60 s — show the change right away.
+    revalidateTag('stores');
     return NextResponse.json({ store: mapStore(store, extraCount) });
   } catch (error) {
     console.error('Store PATCH failed', error);

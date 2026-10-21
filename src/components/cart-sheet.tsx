@@ -19,19 +19,20 @@ interface CartSheetProps {
 export function CartSheet({ open, onOpenChange }: CartSheetProps) {
   const { format: formatPrice } = useCurrency();
   const { cart, removeFromCart, updateQuantity, total, clearCart } = useCart();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { user } = useSessionUser();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col">
+      {/* Opens from the inline-end edge (right in English, left in Arabic). */}
+      <SheetContent side={locale === 'ar' ? 'left' : 'right'} className="flex flex-col">
         <SheetHeader>
           <SheetTitle>{t('cart.title')}</SheetTitle>
         </SheetHeader>
         {cart.length > 0 ? (
           <>
             <ScrollArea className="flex-grow my-4">
-              <div className="flex flex-col gap-6 pr-6">
+              <div className="flex flex-col gap-6 pe-6">
                 {cart.map((item) => (
                   <div key={item.id} className="flex items-start gap-4">
                     <Image
@@ -51,23 +52,26 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
                           className="h-6 w-6"
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
                           disabled={item.quantity <= 1}
-                          aria-label={`Decrease quantity of ${item.name}`}
+                          aria-label={t('cartSheet.decrease', 'Decrease quantity of {name}', { name: item.name })}
                         >
                           -
                         </Button>
-                        <span className="w-6 text-center" aria-live="polite">{item.quantity}</span>
+                        <span className="w-6 text-center" aria-live="polite">
+                          <span className="sr-only">{t('cartSheet.quantity', 'Quantity')}: </span>
+                          {item.quantity}
+                        </span>
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-6 w-6"
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          aria-label={`Increase quantity of ${item.name}`}
+                          aria-label={t('cartSheet.increase', 'Increase quantity of {name}', { name: item.name })}
                         >
                           +
                         </Button>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} aria-label={`Remove ${item.name} from cart`}>
+                    <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} aria-label={t('cartSheet.remove', 'Remove {name} from cart', { name: item.name })}>
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </div>
@@ -85,9 +89,23 @@ export function CartSheet({ open, onOpenChange }: CartSheetProps) {
                           <Link href="/checkout">{t('cart.checkout')}</Link>
                       </Button>
                     ) : (
-                      <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>
-                          <Link href="/login">{t('cart.checkoutGuest')}</Link>
-                      </Button>
+                      <>
+                        {/* Guests keep their cart; it is merged into the account on login. */}
+                        <Button size="lg" className="w-full" asChild onClick={() => onOpenChange(false)}>
+                            <Link href={`/login?next=${encodeURIComponent('/checkout')}`}>{t('cart.checkoutGuest')}</Link>
+                        </Button>
+                        <p className="text-center text-xs text-muted-foreground">
+                          {t('cartSheet.newCustomer', 'New here?')}{' '}
+                          <Link
+                            href={`/signup?next=${encodeURIComponent('/checkout')}`}
+                            onClick={() => onOpenChange(false)}
+                            className="font-semibold text-foreground underline decoration-primary decoration-[3px] underline-offset-4 hover:bg-accent hover:text-accent-foreground dark:text-primary dark:hover:text-accent-foreground"
+                          >
+                            {t('cartSheet.createAccount', 'Create an account')}
+                          </Link>{' '}
+                          {t('cartSheet.keepCart', '— your cart is kept.')}
+                        </p>
+                      </>
                     )}
                     <Button variant="outline" className="w-full" onClick={clearCart}>
                         {t('cart.clear')}

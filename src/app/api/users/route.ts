@@ -3,6 +3,11 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
+/** The admin list shows the newest users first, capped so the page stays fast. */
+const MAX_USERS = 1000;
+
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user || session.user.role !== 'admin') {
@@ -11,30 +16,8 @@ async function requireAdmin() {
   return session;
 }
 
-async function ensureSiteSettingTable() {
-  try {
-    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
-    return true;
-  } catch (error) {
-    try {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "SiteSetting" (
-          "key" TEXT PRIMARY KEY,
-          "value" TEXT NOT NULL,
-          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      return true;
-    } catch (err) {
-      console.error('Failed to ensure SiteSetting table', err);
-      return false;
-    }
-  }
-}
-
+/** Legacy store priority list (before User.isPrioritizedStore existed). Read-only. */
 async function getPrioritizedIds() {
-  const ok = await ensureSiteSettingTable();
-  if (!ok) return new Set<string>();
   try {
     const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
     if (!prioritizedSetting?.value) return new Set<string>();
@@ -52,21 +35,23 @@ export async function GET() {
   }
 
   try {
-    const prioritizedIds = await getPrioritizedIds();
-
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        image: true,
-        role: true,
-        emailVerified: true,
-        createdAt: true,
-        isPrioritizedStore: true,
-      },
-    });
+    const [prioritizedIds, users] = await Promise.all([
+      getPrioritizedIds(),
+      prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: MAX_USERS,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          image: true,
+          role: true,
+          emailVerified: true,
+          createdAt: true,
+          isPrioritizedStore: true,
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       users: users.map((u) => ({
@@ -79,34 +64,10 @@ export async function GET() {
         createdAt: u.createdAt,
         isPrioritizedStore: !!u.isPrioritizedStore || prioritizedIds.has(u.id),
       })),
+      truncated: users.length === MAX_USERS,
     });
   } catch (error) {
-    console.error('Users GET failed (priority select)', error);
-    const prioritizedIds = await getPrioritizedIds();
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        image: true,
-        role: true,
-        emailVerified: true,
-        createdAt: true,
-      },
-    });
-
-    return NextResponse.json({
-      users: users.map((u) => ({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        role: (u.role as any) || 'user',
-        image: u.image,
-        emailVerified: !!u.emailVerified,
-        createdAt: u.createdAt,
-        isPrioritizedStore: prioritizedIds.has(u.id),
-      })),
-    });
+    console.error('Users GET failed', error);
+    return NextResponse.json({ error: 'Failed to load users' }, { status: 500 });
   }
 }

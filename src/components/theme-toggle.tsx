@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from './language-provider';
 
 const STORAGE_KEY = 'titans-theme';
 
@@ -27,6 +28,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   // The inline script in <body> has already applied the correct class to <html>, so the
   // page renders correctly even while this state is hydrating.
   const [theme, setTheme] = useState<Theme | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     setTheme(readTheme());
@@ -44,22 +46,23 @@ export function ThemeToggle({ className }: { className?: string }) {
   };
 
   const isDark = theme === 'dark';
+  const label = isDark ? t('theme.toLight') : t('theme.toDark');
 
   return (
     <button
       type="button"
       onClick={toggle}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={label}
       aria-pressed={isDark}
       className={cn(
         'inline-flex h-10 w-10 items-center justify-center border-[3px] border-foreground bg-background text-foreground shadow-[3px_3px_0_0_hsl(var(--foreground))] dark:shadow-[3px_3px_0_0_hsl(var(--accent))] transition-transform [transition-timing-function:steps(2,end)] duration-75 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:bg-accent hover:text-accent-foreground active:translate-x-[2px] active:translate-y-[2px]',
         className,
       )}
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={label}
     >
       {/* Render both icons; CSS swaps via dark: variant so SSR is stable */}
-      <Sun className="h-4 w-4 block dark:hidden" />
-      <Moon className="h-4 w-4 hidden dark:block" />
+      <Sun className="h-4 w-4 block dark:hidden" aria-hidden />
+      <Moon className="h-4 w-4 hidden dark:block" aria-hidden />
     </button>
   );
 }

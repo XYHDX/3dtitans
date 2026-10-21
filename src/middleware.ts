@@ -47,10 +47,13 @@ export async function middleware(req: NextRequest) {
   });
 
   // Not signed in → bounce to login with a `next` param so we return to the
-  // intended page after auth.
-  if (!token) {
+  // intended page after auth (query kept, e.g. /checkout/success?orderId=…).
+  // The login page only accepts same-origin relative paths for `next`.
+  // A revoked session (deleted user, role change, password reset — see the jwt
+  // callback in lib/auth/options.ts) carries no id and counts as signed out.
+  if (!token || !token.id || token.revoked) {
     const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('next', pathname);
+    loginUrl.searchParams.set('next', pathname + req.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

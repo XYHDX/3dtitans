@@ -5,6 +5,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import type { Product } from '@/lib/types';
+import { track } from '@/lib/analytics';
 
 export type CartItem = Product & {
   quantity: number;
@@ -30,10 +31,48 @@ type CartState = {
   _setCart: (cart: CartItem[]) => void;
   _setMode: (mode: 'guest' | 'user', userId: string | null) => void;
   _setLoading: (loading: boolean) => void;
+  /** Logout: forget the cart locally (memory + localStorage) WITHOUT touching the server cart. */
+  _resetLocal: () => void;
 };
+
+const CART_STORAGE_KEY = 'cart-storage';
 
 const calculateTotal = (cart: CartItem[]) =>
   cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+/**
+ * Store currency for analytics events, loaded once per page (same source as
+ * useCurrency). Falls back to USD — the store currency the client chose — so an
+ * add-to-cart is never lost because the settings request failed.
+ */
+let currencyPromise: Promise<string> | null = null;
+function storeCurrency(): Promise<string> {
+  if (!currencyPromise) {
+    currencyPromise = fetch('/api/payments/settings', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const c = String(d?.settings?.['payment.currencyLabel'] || '').trim().toUpperCase();
+        if (!c) currencyPromise = null; // retry on the next add
+        return c || 'USD';
+      })
+      .catch(() => {
+        currencyPromise = null;
+        return 'USD';
+      });
+  }
+  return currencyPromise;
+}
+
+function trackAddToCart(product: Product, quantity: number) {
+  if (typeof window === 'undefined') return;
+  void storeCurrency().then((currency) =>
+    track('add_to_cart', {
+      currency,
+      value: Math.round(product.price * quantity * 100) / 100,
+      items: [{ item_id: product.id, item_name: product.name, price: product.price, quantity }],
+    })
+  );
+}
 
 /**
  * Hybrid cart store.
@@ -49,7 +88,8 @@ const calculateTotal = (cart: CartItem[]) =>
  * src/app/providers.tsx). It owns the login/logout transitions:
  *   - On login: pushes the localStorage cart to /api/cart/merge, then clears local,
  *     then fetches the merged server cart.
- *   - On logout: clears in-memory cart so the next user doesn't see the previous one.
+ *   - On logout (or any session loss): clears the cart in memory AND localStorage so
+ *     the next person on a shared device doesn't inherit it. The server cart is kept.
  */
 export const useCart = create<CartState>()(
   persist(
@@ -67,6 +107,7 @@ export const useCart = create<CartState>()(
         if (existing) existing.quantity = nextQty;
         else cart.push({ ...product, quantity: nextQty });
         set({ cart, total: calculateTotal(cart) });
+        trackAddToCart(product, quantity);
 
         if (get().mode === 'user') {
           // Fire-and-forget — error is non-fatal (next sync reconciles)
@@ -120,9 +161,13 @@ export const useCart = create<CartState>()(
       _setCart: (cart) => set({ cart, total: calculateTotal(cart) }),
       _setMode: (mode, userId) => set({ mode, userId }),
       _setLoading: (loading) => set({ loading }),
+      _resetLocal: () => {
+        set({ cart: [], total: 0, mode: 'guest', userId: null });
+        try { localStorage.removeItem(CART_STORAGE_KEY); } catch {}
+      },
     }),
     {
-      name: 'cart-storage',
+      name: CART_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       // Only persist guest carts to localStorage. Logged-in carts live on the server.
       partialize: (state) => (state.mode === 'guest' ? { cart: state.cart } : { cart: [] }),
@@ -150,10 +195,11 @@ export function CartSync() {
   useEffect(() => {
     if (status === 'loading') return;
 
-    // LOGGED OUT — switch to guest mode (preserves whatever was in localStorage)
+    // LOGGED OUT — a signed-in user just left: forget their cart locally (it
+    // stays on the server). A visitor who was never signed in keeps their guest cart.
     if (!userId) {
       if (currentUserId !== null) {
-        _setMode('guest', null);
+        useCart.getState()._resetLocal();
       }
       return;
     }
@@ -191,7 +237,7 @@ export function CartSync() {
           _setMode('user', userId);
 
           // Step 4: clear localStorage cart-storage now that we're authoritative
-          try { localStorage.removeItem('cart-storage'); } catch {}
+          try { localStorage.removeItem(CART_STORAGE_KEY); } catch {}
         } finally {
           if (!cancelled) _setLoading(false);
         }

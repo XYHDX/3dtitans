@@ -5,7 +5,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { validatePassword } from '@/lib/password';
 
 /**
- * POST /api/auth/signup  body: { email, password, name? }
+ * POST /api/auth/signup  body: { email, password, name?, phoneNumber? }
  *
  * Creates a NEW customer account. Every account starts with role 'user' —
  * roles are only ever changed by an admin. An email that is already
@@ -14,7 +14,7 @@ import { validatePassword } from '@/lib/password';
  */
 export async function POST(req: Request) {
   try {
-    const limited = rateLimit(req, 'signup', { windowMs: 10 * 60 * 1000, max: 10 });
+    const limited = rateLimit(req, 'signup', { windowMs: 10 * 60 * 1000, max: 60 });
     if (!limited.ok) {
       return NextResponse.json({ error: 'Too many signup attempts. Please try again later.' }, { status: 429 });
     }
@@ -23,6 +23,10 @@ export async function POST(req: Request) {
     const email = String(body.email || '').toLowerCase().trim();
     const password: string = typeof body.password === 'string' ? body.password : '';
     const name = String(body.name || body.displayName || '').trim().slice(0, 100);
+    // Optional phone: Arabic-Indic / Persian digits (٠٩٣… / ۰۹۳…) become 093…
+    const phoneNumber = typeof body.phoneNumber === 'string'
+      ? body.phoneNumber.trim().replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d: string) => String(d.charCodeAt(0) & 0xf))
+      : '';
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
@@ -33,6 +37,9 @@ export async function POST(req: Request) {
     const passwordError = validatePassword(password);
     if (passwordError) {
       return NextResponse.json({ error: passwordError }, { status: 400 });
+    }
+    if (phoneNumber && (!/^\+?[0-9 ]+$/.test(phoneNumber) || phoneNumber.length < 7 || phoneNumber.length > 20)) {
+      return NextResponse.json({ error: 'Please enter a valid phone number.', code: 'invalid_phone' }, { status: 400 });
     }
 
     const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
@@ -51,6 +58,7 @@ export async function POST(req: Request) {
           name: name || email.split('@')[0],
           passwordHash,
           role: 'user',
+          phoneNumber: phoneNumber || null,
         },
       });
       return NextResponse.json({

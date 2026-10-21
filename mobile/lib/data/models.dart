@@ -649,7 +649,8 @@ class Order {
   }
 }
 
-/// A file stored through `POST /api/storage/upload`.
+/// A file stored through `TitansApi.uploadFile` (signed upload URL from
+/// `POST /api/storage/upload-url`, then a direct PUT to Supabase Storage).
 class StoredFile {
   const StoredFile({required this.url, required this.path, required this.bucket, required this.size});
 

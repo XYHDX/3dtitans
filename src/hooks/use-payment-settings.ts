@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-export type PaymentMethod = 'cod' | 'bank_transfer' | 'sham_cash' | 'syriatel_cash' | 'stripe';
+export type PaymentMethod = 'cod' | 'bank_transfer' | 'sham_cash' | 'sham_cash_epay' | 'syriatel_cash' | 'stripe';
 
 export type PaymentSettings = {
   codEnabled: boolean;
   bankEnabled: boolean;
   shamCashEnabled: boolean;
+  /** ShamCash online payment (e-pay): customer confirms the bill in the ShamCash app / website. */
+  shamCashEpayEnabled: boolean;
   syriatelCashEnabled: boolean;
   stripeEnabled: boolean;
 
@@ -19,19 +21,19 @@ export type PaymentSettings = {
   syriatelCashNumber: string;
 
   currencyLabel: string;
-  /** Sham Cash transfers are confirmed automatically through the Sham Cash API. */
-  shamCashAutoVerify: boolean;
 };
 
 /**
- * Defaults: nothing enabled (safe). The picker will show "no methods" if the
- * fetch fails — pushes the user to surface the admin settings issue rather
+ * Defaults: nothing enabled (safe). If the fetch fails the picker shows a
+ * customer-friendly "temporarily unavailable" state with a retry button rather
  * than silently allowing checkout with an unknown method.
+ * currencyLabel stays '' until loaded (callers fall back to the order's currency).
  */
 const DEFAULTS: PaymentSettings = {
   codEnabled: false,
   bankEnabled: false,
   shamCashEnabled: false,
+  shamCashEpayEnabled: false,
   syriatelCashEnabled: false,
   stripeEnabled: false,
   bankName: '',
@@ -40,8 +42,7 @@ const DEFAULTS: PaymentSettings = {
   bankAccountHolder: '',
   shamCashNumber: '',
   syriatelCashNumber: '',
-  currencyLabel: 'SYP',
-  shamCashAutoVerify: false,
+  currencyLabel: '',
 };
 
 /**
@@ -54,19 +55,25 @@ const DEFAULTS: PaymentSettings = {
 export function usePaymentSettings() {
   const [settings, setSettings] = useState<PaymentSettings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
+  /** True when the settings could not be loaded (network / server error). */
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
         // Cache-busting query param so any layer of intermediate caching is bypassed
         const res = await fetch(`/api/payments/settings?_=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const raw: Record<string, string> = data?.settings || {};
         const parsed: PaymentSettings = {
           codEnabled:          raw['payment.codEnabled']          === 'true',
           bankEnabled:         raw['payment.bankEnabled']         === 'true',
           shamCashEnabled:     raw['payment.shamCashEnabled']     === 'true',
+          shamCashEpayEnabled: raw['payment.shamCashEpayEnabled'] === 'true',
           syriatelCashEnabled: raw['payment.syriatelCashEnabled'] === 'true',
           stripeEnabled:       raw['payment.stripeEnabled']       === 'true',
           bankName:            raw['payment.bankName']            || '',
@@ -75,18 +82,24 @@ export function usePaymentSettings() {
           bankAccountHolder:   raw['payment.bankAccountHolder']   || '',
           shamCashNumber:      raw['payment.shamCashNumber']      || '',
           syriatelCashNumber:  raw['payment.syriatelCashNumber']  || '',
-          currencyLabel:       raw['payment.currencyLabel']       || 'SYP',
-          shamCashAutoVerify:  raw['payment.shamCashAutoVerify']  === 'true',
+          currencyLabel:       (raw['payment.currencyLabel']      || '').toUpperCase(),
         };
-        if (!cancelled) setSettings(parsed);
+        if (!cancelled) {
+          setSettings(parsed);
+          setError(false);
+        }
       } catch (err) {
         console.error('Failed to load payment settings:', err);
+        if (!cancelled) setError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
 
-  return { settings, loading };
+  /** Fetch the settings again (e.g. "Try again" after a failure). */
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+
+  return { settings, loading, error, reload };
 }

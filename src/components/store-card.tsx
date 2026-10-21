@@ -38,26 +38,26 @@ export function StoreCard({ store, className }: StoreCardProps) {
         {store.coverUrl && (
           <Image
             src={store.coverUrl}
-            alt={store.name}
+            alt=""
             fill
             className="object-cover"
-            sizes="100vw"
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
       </div>
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-12 w-12 ring-2 ring-background -mt-8 bg-background">
-            <AvatarImage src={store.avatarUrl || undefined} alt={store.name} />
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar className="h-12 w-12 ring-2 ring-background -mt-8 bg-background shrink-0">
+            <AvatarImage src={store.avatarUrl || undefined} alt="" />
             <AvatarFallback>{getInitials(store.name)}</AvatarFallback>
           </Avatar>
-          <div className="flex flex-col">
-            <Link href={`/stores/${store.slug}`} className="text-lg font-semibold hover:text-primary">
-              {store.name}
-            </Link>
-            <span className="text-xs text-muted-foreground">/{store.slug}</span>
-          </div>
+          <Link
+            href={`/stores/${store.slug}`}
+            className="min-w-0 text-lg font-semibold [overflow-wrap:anywhere] hover:underline hover:decoration-primary hover:decoration-2 hover:underline-offset-4"
+          >
+            {store.name}
+          </Link>
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-2">
@@ -70,21 +70,22 @@ export function StoreCard({ store, className }: StoreCardProps) {
             href={websiteHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+            className="inline-flex items-center gap-1 text-sm text-foreground underline decoration-primary decoration-2 underline-offset-4 dark:text-primary min-w-0"
           >
-            <ExternalLink className="h-4 w-4" />
-            {store.websiteUrl?.replace(/^https?:\/\//, '')}
+            <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{store.websiteUrl?.replace(/^https?:\/\//, '')}</span>
           </Link>
         )}
       </CardContent>
-      <CardFooter className="flex items-center justify-between gap-2">
-        <div className="text-xs text-muted-foreground">
-          {store.isPublished ? t('stores.published') : t('stores.draft')}
-        </div>
+      <CardFooter className="flex items-center justify-end gap-2">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/stores/${store.slug}`} className="inline-flex items-center gap-1">
+          <Link
+            href={`/stores/${store.slug}`}
+            className="inline-flex items-center gap-1"
+            aria-label={t('catalog.store.viewNamed', 'View store: {name}', { name: store.name })}
+          >
             {t('stores.viewStore')}
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
           </Link>
         </Button>
       </CardFooter>

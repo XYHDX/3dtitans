@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Order,
   Product,
@@ -11,26 +11,46 @@ import type {
   Store,
 } from '@/lib/types';
 
+/** Thrown for non-2xx responses so callers can tell "failed" apart from "empty". */
+async function fetchJson(url: string, init?: RequestInit) {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 // Products
+
+/**
+ * Dashboard product list (admin / store owner) — `/api/products?scope=manage`.
+ *
+ * Admins get every product, store owners only their own; archived products are
+ * included and flagged with `archived`. Never cached. Public pages use
+ * useProductList / useFeaturedProducts instead.
+ */
 export function useProducts(filter?: { uploaderId?: string; storeId?: string; storeSlug?: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ scope: 'manage' });
       if (filter?.uploaderId) params.set('uploaderId', filter.uploaderId);
       if (filter?.storeId) params.set('storeId', filter.storeId);
       if (filter?.storeSlug) params.set('storeSlug', filter.storeSlug);
-      const qs = params.toString();
 
-      const res = await fetch(`/api/products${qs ? `?${qs}` : ''}`);
-      const data = await res.json();
+      const data = await fetchJson(`/api/products?${params.toString()}`, { cache: 'no-store' });
       setProducts(data.products || []);
     } catch (error) {
       console.error('Failed to fetch products', error);
       setProducts([]);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -67,7 +87,15 @@ export function useProducts(filter?: { uploaderId?: string; storeId?: string; st
   const deleteProduct = useCallback(async (id: string) => {
     const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
     if (!res.ok) return false;
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    const data = await res.json().catch(() => ({}));
+    if (data?.archived) {
+      // "Delete" archives (orders keep their history): mirror what a reload would show.
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? ({ ...p, archived: true, archivedAt: new Date().toISOString() } as Product) : p))
+      );
+    } else {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+    }
     return true;
   }, []);
 
@@ -97,9 +125,156 @@ export function useProducts(filter?: { uploaderId?: string; storeId?: string; st
     });
 
     return sorted;
-  }, [products, filter?.uploaderId]);
+  }, [products, filter?.uploaderId, filter?.storeId]);
 
-  return { data, loading, refresh, addProduct, updateProduct, deleteProduct };
+  return { data, loading, error, refresh, addProduct, updateProduct, deleteProduct };
+}
+
+export type ProductListQuery = {
+  q?: string;
+  category?: string;
+  storeSlug?: string;
+  /** Page size (server default 24, max 60). */
+  pageSize?: number;
+};
+
+export type ProductPage = { products: Product[]; nextOffset: number | null };
+
+/** Matches the server default for /api/products. */
+const DEFAULT_PAGE_SIZE = 24;
+
+/**
+ * Public, paginated product list (shop, store pages). Responses are CDN-cached.
+ *
+ * `error` is set when a page could not be loaded — callers must show an error
+ * state with `retry`, never the "no products" message.
+ * `initial` (server-rendered first page) skips the first request.
+ */
+export function useProductList(query: ProductListQuery, options?: { initial?: ProductPage }) {
+  const { q = '', category = '', storeSlug = '', pageSize } = query;
+  const key = JSON.stringify([q, category, storeSlug, pageSize ?? null]);
+  const initialRef = useRef(options?.initial ? { key, page: options.initial } : null);
+
+  const [products, setProducts] = useState<Product[]>(() => options?.initial?.products ?? []);
+  const [nextOffset, setNextOffset] = useState<number | null>(() => options?.initial?.nextOffset ?? null);
+  const [loading, setLoading] = useState(!options?.initial);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+
+  const buildUrl = useCallback(
+    (offset: number) => {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set('q', q.trim());
+      if (category.trim()) params.set('category', category.trim());
+      if (storeSlug) params.set('storeSlug', storeSlug);
+      // Always send `limit`: a request without paging params gets the legacy
+      // un-paginated list kept for the published mobile app.
+      params.set('limit', String(pageSize ?? DEFAULT_PAGE_SIZE));
+      if (offset > 0) params.set('offset', String(offset));
+      const qs = params.toString();
+      return `/api/products${qs ? `?${qs}` : ''}`;
+    },
+    [q, category, storeSlug, pageSize]
+  );
+
+  const loadFirst = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    setLoadingMore(false);
+    setError(null);
+    try {
+      const data = await fetchJson(buildUrl(0));
+      if (id !== requestId.current) return;
+      setProducts(data.products || []);
+      setNextOffset(typeof data.nextOffset === 'number' ? data.nextOffset : null);
+    } catch (err) {
+      if (id !== requestId.current) return;
+      console.error('Failed to fetch products', err);
+      setProducts([]);
+      setNextOffset(null);
+      setError('failed');
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
+  }, [buildUrl]);
+
+  useEffect(() => {
+    // The server already rendered this exact page — no need to fetch it again.
+    if (initialRef.current && initialRef.current.key === key) {
+      initialRef.current = null;
+      return;
+    }
+    initialRef.current = null;
+    loadFirst();
+  }, [key, loadFirst]);
+
+  const loadMore = useCallback(async () => {
+    if (nextOffset === null || loadingMore) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const data = await fetchJson(buildUrl(nextOffset));
+      if (id !== requestId.current) return;
+      const incoming: Product[] = data.products || [];
+      setProducts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...incoming.filter((p) => !seen.has(p.id))];
+      });
+      setNextOffset(typeof data.nextOffset === 'number' ? data.nextOffset : null);
+    } catch (err) {
+      if (id !== requestId.current) return;
+      console.error('Failed to fetch more products', err);
+      setError('failed');
+    } finally {
+      if (id === requestId.current) setLoadingMore(false);
+    }
+  }, [buildUrl, loadingMore, nextOffset]);
+
+  /** Retry whatever failed: the next page if some products are shown, else the first page. */
+  const retry = useCallback(() => {
+    if (products.length > 0 && nextOffset !== null) return loadMore();
+    return loadFirst();
+  }, [loadFirst, loadMore, nextOffset, products.length]);
+
+  return {
+    data: products,
+    loading,
+    loadingMore,
+    error,
+    hasMore: nextOffset !== null,
+    loadMore,
+    retry,
+  };
+}
+
+/** Home page "featured" strip: 6 products (prioritised stores first, then newest). */
+export function useFeaturedProducts() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchJson('/api/products?featured=1');
+      setProducts(data.products || []);
+    } catch (err) {
+      console.error('Failed to fetch featured products', err);
+      setProducts([]);
+      setError('failed');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { data: products, loading, error, refresh };
 }
 
 /**
@@ -152,6 +327,7 @@ export function useProduct(id: string | undefined | null) {
 export function useStores(filter?: { ownerId?: string; includeUnpublished?: boolean }, options?: { skipFetch?: boolean }) {
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (options?.skipFetch) {
@@ -159,17 +335,22 @@ export function useStores(filter?: { ownerId?: string; includeUnpublished?: bool
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       if (filter?.ownerId) params.set('ownerId', filter.ownerId);
       if (filter?.includeUnpublished) params.set('published', 'false');
       const qs = params.toString();
-      const res = await fetch(`/api/stores${qs ? `?${qs}` : ''}`);
-      const data = await res.json();
+      // Draft listings depend on the session — always fetch fresh.
+      const data = await fetchJson(
+        `/api/stores${qs ? `?${qs}` : ''}`,
+        filter?.includeUnpublished ? { cache: 'no-store' } : undefined
+      );
       setStores(data.stores || []);
     } catch (error) {
       console.error('Failed to fetch stores', error);
       setStores([]);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -206,12 +387,13 @@ export function useStores(filter?: { ownerId?: string; includeUnpublished?: bool
     return data.store as Store;
   }, []);
 
-  return { data: stores, loading, refresh, createStore, updateStore };
+  return { data: stores, loading, error, refresh, createStore, updateStore };
 }
 
 export function useStore(slug?: string, options?: { skipFetch?: boolean }) {
   const [store, setStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -219,13 +401,21 @@ export function useStore(slug?: string, options?: { skipFetch?: boolean }) {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/stores/${slug}`);
+      const res = await fetch(`/api/stores/${encodeURIComponent(slug)}`);
+      if (res.status === 404) {
+        setStore(null);
+        setError('not_found');
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setStore(data.store || null);
     } catch (error) {
       console.error('Failed to fetch store', error);
       setStore(null);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -239,23 +429,25 @@ export function useStore(slug?: string, options?: { skipFetch?: boolean }) {
     refresh();
   }, [options?.skipFetch, refresh]);
 
-  return { data: store, loading, refresh };
+  return { data: store, loading, error, refresh };
 }
 
 // Uploads
 export function useUploads(options?: { skipFetch?: boolean }) {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/uploads');
-      const data = await res.json();
+      const data = await fetchJson('/api/uploads');
       setUploads(data.uploads || []);
     } catch (error) {
       console.error('Failed to fetch uploads', error);
       setUploads([]);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -300,23 +492,29 @@ export function useUploads(options?: { skipFetch?: boolean }) {
     return data.upload as Upload;
   }, []);
 
-  return { data: uploads, loading, refresh, addUpload, deleteUpload, assignUpload };
+  return { data: uploads, loading, error, refresh, addUpload, deleteUpload, assignUpload };
 }
 
 // Orders
 export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'][] }, options?: { skipFetch?: boolean }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  /** The API returns the newest 100 orders; true when older ones exist. */
+  const [hasMore, setHasMore] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/orders');
-      const data = await res.json();
+      const data = await fetchJson('/api/orders');
       setOrders(data.orders || []);
+      setHasMore(!!data.nextCursor);
     } catch (error) {
       console.error('Failed to fetch orders', error);
       setOrders([]);
+      setHasMore(false);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -413,23 +611,25 @@ export function useOrders(filter?: { ownerId?: string; statusIn?: Order['status'
     return result;
   }, [orders, filter?.ownerId, filter?.statusIn]);
 
-  return { data, loading, refresh, createOrder, updateOrder, requestCancelOrder, releaseOrderToPool, claimOrder, deleteOrder };
+  return { data, loading, error, hasMore, refresh, createOrder, updateOrder, requestCancelOrder, releaseOrderToPool, claimOrder, deleteOrder };
 }
 
 // Settings
 export function useSiteSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
+      const data = await fetchJson('/api/settings');
       setSettings(data.settings || null);
     } catch (error) {
       console.error('Failed to fetch settings', error);
       setSettings(null);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -450,23 +650,25 @@ export function useSiteSettings() {
     return true;
   }, []);
 
-  return { data: settings, loading, refresh, saveSettings };
+  return { data: settings, loading, error, refresh, saveSettings };
 }
 
 // Contact submissions
 export function useContactSubmissions(options?: { skipFetch?: boolean }) {
   const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/contact');
-      const data = await res.json();
+      const data = await fetchJson('/api/contact');
       setSubmissions(data.submissions || []);
     } catch (error) {
       console.error('Failed to fetch contact submissions', error);
       setSubmissions([]);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -492,23 +694,25 @@ export function useContactSubmissions(options?: { skipFetch?: boolean }) {
     return data.submission as ContactSubmission;
   }, []);
 
-  return { data: submissions, loading, refresh, submitContact };
+  return { data: submissions, loading, error, refresh, submitContact };
 }
 
 // Newsletter
 export function useNewsletterSubscriptions(options?: { skipFetch?: boolean }) {
   const [subs, setSubs] = useState<NewsletterSubscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/newsletter');
-      const data = await res.json();
+      const data = await fetchJson('/api/newsletter');
       setSubs(data.subscriptions || []);
     } catch (error) {
       console.error('Failed to fetch newsletter subscriptions', error);
       setSubs([]);
+      setError('failed');
     } finally {
       setLoading(false);
     }
@@ -528,11 +732,21 @@ export function useNewsletterSubscriptions(options?: { skipFetch?: boolean }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    setSubs((prev) => [data.subscription, ...prev.filter((s: any) => s.id !== data.subscription.id)]);
-    return data.subscription as NewsletterSubscription;
+    const data = await res.json().catch(() => null);
+    // The API answers { ok: true, subscription: { email } } — no id or date, so
+    // nothing reveals whether the address was already subscribed.
+    if (!res.ok || !data?.ok) return null;
+    const subscription: NewsletterSubscription = {
+      id: data.subscription?.id || '',
+      email: data.subscription?.email || email,
+      subscribedAt: data.subscription?.subscribedAt || new Date().toISOString(),
+    };
+    // Only rows with a real id belong in the admin list.
+    if (subscription.id) {
+      setSubs((prev) => [subscription, ...prev.filter((s) => s.id !== subscription.id)]);
+    }
+    return subscription;
   }, []);
 
-  return { data: subs, loading, refresh, subscribe };
+  return { data: subs, loading, error, refresh, subscribe };
 }

@@ -27,7 +27,8 @@ export async function GET() {
       return NextResponse.json({ items: [] });
     }
     const items = await prisma.wishlistItem.findMany({
-      where: { userId: session.user.id },
+      // Archived products are hidden (the row stays, so a restored product comes back).
+      where: { userId: session.user.id, product: { archivedAt: null } },
       orderBy: { addedAt: 'desc' },
       include: {
         product: {
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     // constraint and bubble up as a 500 instead of the proper 400/404.
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!product) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
@@ -99,6 +100,10 @@ export async function POST(req: Request) {
         where: { userId_productId: { userId: session.user.id, productId } },
       });
       return NextResponse.json({ wishlisted: false });
+    }
+    // Removing an archived product (above) is fine; adding one is not.
+    if (product.archivedAt) {
+      return NextResponse.json({ error: 'This product is no longer available.', code: 'product_unavailable' }, { status: 410 });
     }
     await prisma.wishlistItem.create({
       data: { userId: session.user.id, productId },

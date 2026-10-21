@@ -7,25 +7,27 @@ import { cn } from '@/lib/utils';
 import { useSessionUser } from '@/hooks/use-session';
 import { useEffect, useMemo, useState } from 'react';
 import { useOrders, useUploads } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
 
 const allNavItems = [
-  { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Home', roles: ['admin'] },
-  { href: '/store-dashboard', icon: Home, label: 'Store Home', roles: ['store-owner'] },
-  { href: '/store-dashboard/profile', icon: User, label: 'Store Profile', roles: ['store-owner'] },
-  { href: '/admin/products', icon: Package, label: 'Products', roles: ['admin', 'store-owner'] },
-  { href: '/admin/orders', icon: ShoppingBag, label: 'Orders', roles: ['admin', 'store-owner'] },
-  { href: '/admin/pool', icon: Component, label: 'Pool', roles: ['admin', 'store-owner'] },
-  { href: '/admin/uploads', icon: UploadCloud, label: 'Uploads', roles: ['admin'] },
-  { href: '/store-dashboard/uploads', icon: UploadCloud, label: 'Uploads', roles: ['store-owner'] },
-  { href: '/admin/contact', icon: Mail, label: 'Contact', roles: ['admin'] },
-  { href: '/admin/users', icon: Users, label: 'Users', roles: ['admin'] },
-  { href: '/admin/newsletter', icon: Newspaper, label: 'Newsletter', roles: ['admin'] },
-  { href: '/admin/settings', icon: Settings, label: 'Settings', roles: ['admin'] },
+  { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Home', key: 'adminNav.adminHome', roles: ['admin'] },
+  { href: '/store-dashboard', icon: Home, label: 'Store Home', key: 'adminNav.storeHome', roles: ['store-owner'] },
+  { href: '/store-dashboard/profile', icon: User, label: 'Store Profile', key: 'adminNav.storeProfile', roles: ['store-owner'] },
+  { href: '/admin/products', icon: Package, label: 'Products', key: 'adminNav.products', roles: ['admin', 'store-owner'] },
+  { href: '/admin/orders', icon: ShoppingBag, label: 'Orders', key: 'adminNav.orders', roles: ['admin', 'store-owner'] },
+  { href: '/admin/pool', icon: Component, label: 'Pool', key: 'adminNav.pool', roles: ['admin', 'store-owner'] },
+  { href: '/admin/uploads', icon: UploadCloud, label: 'Uploads', key: 'adminNav.uploads', roles: ['admin'] },
+  { href: '/store-dashboard/uploads', icon: UploadCloud, label: 'Uploads', key: 'adminNav.uploads', roles: ['store-owner'] },
+  { href: '/admin/contact', icon: Mail, label: 'Contact', key: 'adminNav.contact', roles: ['admin'] },
+  { href: '/admin/users', icon: Users, label: 'Users', key: 'adminNav.users', roles: ['admin'] },
+  { href: '/admin/newsletter', icon: Newspaper, label: 'Newsletter', key: 'adminNav.newsletter', roles: ['admin'] },
+  { href: '/admin/settings', icon: Settings, label: 'Settings', key: 'adminNav.settings', roles: ['admin'] },
 ];
 
 export function AdminBottomNav() {
   const pathname = usePathname();
   const { user } = useSessionUser();
+  const { t } = useTranslation();
   const { data: orders } = useOrders(
     user?.role === 'store-owner' && user?.id ? { ownerId: user.id } : undefined,
     user?.role === 'store-owner' ? undefined : { skipFetch: true }
@@ -79,39 +81,44 @@ export function AdminBottomNav() {
   if (!user || navItems.length === 0) {
     // Render an empty placeholder to prevent layout shift and hide nav from unauthorized users.
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t h-16" />
+      <div className="fixed bottom-0 inset-x-0 z-50 bg-card border-t-[3px] border-foreground h-16" />
     );
   }
 
   return (
-    <nav 
-      className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t h-16 grid"
-      style={{ gridTemplateColumns: `repeat(${navItems.length}, 1fr)` }}
+    <nav
+      aria-label={t('adminNav.label', 'Dashboard navigation')}
+      className="fixed bottom-0 inset-x-0 z-50 bg-card border-t-[3px] border-foreground pb-[env(safe-area-inset-bottom)]"
     >
-      {navItems.map((item) => {
-        const isActive = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground transition-colors w-full h-full',
-              isActive ? 'text-primary bg-muted/50' : 'hover:bg-muted/50'
-            )}
-          >
-            <div className="relative">
-              <item.icon className="h-5 w-5" />
-              {user?.role === 'store-owner' && item.href === '/admin/orders' && hasNewOrders && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+      {/* Scrolls sideways when the items don't fit (admins have 9 on a 360 px phone). */}
+      <div className="flex h-16 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href;
+          const label = t(item.key, item.label);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive ? 'page' : undefined}
+              className={cn(
+                'flex flex-1 min-w-[4.75rem] flex-col items-center justify-center gap-1 px-1 text-[11px] leading-tight transition-colors h-full',
+                isActive ? 'bg-accent text-accent-foreground font-bold' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               )}
-              {user?.role === 'store-owner' && item.href === '/store-dashboard/uploads' && hasNewUploads && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
-              )}
-            </div>
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
+            >
+              <div className="relative">
+                <item.icon className="h-5 w-5" aria-hidden />
+                {user?.role === 'store-owner' && item.href === '/admin/orders' && hasNewOrders && (
+                  <span className="absolute -top-1 -end-1 h-2 w-2 bg-destructive border border-foreground" aria-label={t('adminNav.new', 'New')} />
+                )}
+                {user?.role === 'store-owner' && item.href === '/store-dashboard/uploads' && hasNewUploads && (
+                  <span className="absolute -top-1 -end-1 h-2 w-2 bg-destructive border border-foreground" aria-label={t('adminNav.new', 'New')} />
+                )}
+              </div>
+              <span className="max-w-full truncate">{label}</span>
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

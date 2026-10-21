@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { AlertTriangle, Banknote, Building2, Smartphone, CreditCard, Wrench } from 'lucide-react';
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form';
+import { AlertTriangle, Banknote, Building2, Smartphone, CreditCard, Wrench, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,45 +14,47 @@ import { useToast } from '@/hooks/use-toast';
 import { useSiteSettings } from '@/hooks/use-data';
 import { useSessionUser } from '@/hooks/use-session';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/components/language-provider';
+import { SITE_SETTING_KEYS, validateSiteSettings, type SiteSettingKey } from '@/lib/site-settings-shared';
 
-const generalSchema = z.object({
-  aboutHeroTitle: z.string().min(3),
-  aboutHeroSubtitle: z.string().min(5),
-  aboutMissionTitle: z.string().min(3),
-  aboutMission: z.string().min(10),
-  aboutContactTitle: z.string().min(3),
-  aboutContact: z.string().min(10),
-  aboutContactCardTitle: z.string().min(3),
-  footerBlurb: z.string().min(10),
-  facebookUrl: z.string().trim().url().or(z.literal('')),
-  instagramUrl: z.string().trim().url().or(z.literal('')),
-});
-type GeneralFormData = z.infer<typeof generalSchema>;
+type GeneralFormData = Record<SiteSettingKey, string>;
+
+/** Same rules as the server (src/lib/site-settings-shared.ts), so errors show before saving. */
+const generalResolver: Resolver<GeneralFormData> = async (values) => {
+  const { errors } = validateSiteSettings(values);
+  const keys = Object.keys(errors) as SiteSettingKey[];
+  if (keys.length === 0) return { values, errors: {} };
+  const fieldErrors: FieldErrors<GeneralFormData> = {};
+  for (const key of keys) fieldErrors[key] = { type: 'validate', message: errors[key] };
+  return { values: {}, errors: fieldErrors };
+};
+
+/** Bilingual text settings: [English key, Arabic key, label i18n key, multi-line rows]. */
+const TEXT_PAIRS: Array<[SiteSettingKey, SiteSettingKey, string, number]> = [
+  ['aboutHeroTitle', 'aboutHeroTitleAr', 'adminSettings.aboutHeroTitle', 0],
+  ['aboutHeroSubtitle', 'aboutHeroSubtitleAr', 'adminSettings.aboutHeroSubtitle', 2],
+  ['aboutMissionTitle', 'aboutMissionTitleAr', 'adminSettings.aboutMissionTitle', 0],
+  ['aboutMission', 'aboutMissionAr', 'adminSettings.aboutMission', 4],
+  ['aboutContactTitle', 'aboutContactTitleAr', 'adminSettings.aboutContactTitle', 0],
+  ['aboutContact', 'aboutContactAr', 'adminSettings.aboutContact', 3],
+  ['aboutContactCardTitle', 'aboutContactCardTitleAr', 'adminSettings.aboutContactCardTitle', 0],
+  ['footerBlurb', 'footerBlurbAr', 'adminSettings.footerBlurb', 3],
+];
 
 export default function SettingsAdminPage() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { user } = useSessionUser();
-  const { data: settings, loading: settingsLoading, saveSettings } = useSiteSettings();
+  const { data: settings, loading: settingsLoading, saveSettings, refresh } = useSiteSettings();
 
   const {
     register, handleSubmit, formState: { errors }, reset,
-  } = useForm<GeneralFormData>({ resolver: zodResolver(generalSchema) });
+  } = useForm<GeneralFormData>({ resolver: generalResolver });
 
   useEffect(() => {
     if (settings) {
-      reset({
-        aboutHeroTitle: settings.aboutHeroTitle || '',
-        aboutHeroSubtitle: settings.aboutHeroSubtitle || '',
-        aboutMissionTitle: settings.aboutMissionTitle || '',
-        aboutMission: settings.aboutMission || '',
-        aboutContactTitle: settings.aboutContactTitle || '',
-        aboutContact: settings.aboutContact || '',
-        aboutContactCardTitle: settings.aboutContactCardTitle || '',
-        footerBlurb: settings.footerBlurb || '',
-        facebookUrl: settings.facebookUrl || '',
-        instagramUrl: settings.instagramUrl || '',
-      });
+      reset(Object.fromEntries(SITE_SETTING_KEYS.map((k) => [k, settings[k] || ''])) as GeneralFormData);
     }
   }, [settings, reset]);
 
@@ -62,34 +62,41 @@ export default function SettingsAdminPage() {
     setLoading(true);
     const ok = await saveSettings(data);
     toast(ok
-      ? { title: 'Settings saved', description: 'Site content updated.' }
-      : { variant: 'destructive', title: 'Save failed', description: 'Could not update settings.' });
+      ? { title: t('adminSettings.savedTitle'), description: t('adminSettings.savedDesc') }
+      : { variant: 'destructive', title: t('adminSettings.saveFailedTitle'), description: t('adminSettings.saveFailedDesc') });
+    // Pull back the normalised values (e.g. WhatsApp number in +963… form).
+    if (ok) await refresh();
     setLoading(false);
   };
 
+  const errorText = (key: SiteSettingKey) => {
+    const code = errors[key]?.message;
+    return code ? t(`adminSettings.errors.${code}`, code) : undefined;
+  };
+
   if (!user) {
-    return <div className="text-center py-16"><p className="text-muted-foreground">Please log in.</p></div>;
+    return <div className="text-center py-16"><p className="text-muted-foreground">{t('adminSettings.pleaseLogIn')}</p></div>;
   }
   if (user.role !== 'admin') {
-    return <div className="text-center py-16"><h1 className="text-3xl font-bold">Access Denied</h1></div>;
+    return <div className="text-center py-16"><h1 className="text-3xl font-bold">{t('adminSettings.accessDenied')}</h1></div>;
   }
 
   return (
     <Tabs defaultValue="general" className="space-y-6">
       <TabsList className="grid w-full grid-cols-3 max-w-xl">
-        <TabsTrigger value="general">General</TabsTrigger>
+        <TabsTrigger value="general">{t('adminSettings.tabGeneral')}</TabsTrigger>
         <TabsTrigger value="maintenance">
-          <Wrench className="h-3.5 w-3.5 mr-1.5" /> Maintenance
+          <Wrench className="h-3.5 w-3.5 me-1.5" /> {t('adminSettings.tabMaintenance')}
         </TabsTrigger>
-        <TabsTrigger value="payments">Payments</TabsTrigger>
+        <TabsTrigger value="payments">{t('adminSettings.tabPayments')}</TabsTrigger>
       </TabsList>
 
       {/* GENERAL */}
       <TabsContent value="general">
         <Card>
           <CardHeader>
-            <CardTitle>General Settings</CardTitle>
-            <CardDescription>About page content, footer, social links.</CardDescription>
+            <CardTitle>{t('adminSettings.generalTitle')}</CardTitle>
+            <CardDescription>{t('adminSettings.generalDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {settingsLoading ? (
@@ -99,19 +106,69 @@ export default function SettingsAdminPage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : (
-              <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6">
-                <Field label="About: Hero Title">          <Input {...register('aboutHeroTitle')} /></Field>
-                <Field label="About: Hero Subtitle">       <Textarea {...register('aboutHeroSubtitle')} rows={2} /></Field>
-                <Field label="About: Mission Title">       <Input {...register('aboutMissionTitle')} /></Field>
-                <Field label="About: Mission Statement">   <Textarea {...register('aboutMission')} rows={4} /></Field>
-                <Field label="About: Contact Title">       <Input {...register('aboutContactTitle')} /></Field>
-                <Field label="About: Contact Text">        <Textarea {...register('aboutContact')} rows={3} /></Field>
-                <Field label="About: Contact Card Title">  <Input {...register('aboutContactCardTitle')} /></Field>
-                <Field label="Footer Blurb">               <Textarea {...register('footerBlurb')} rows={3} /></Field>
-                <Field label="Facebook URL">               <Input {...register('facebookUrl')} placeholder="https://facebook.com/..." /></Field>
-                <Field label="Instagram URL">              <Input {...register('instagramUrl')} placeholder="https://instagram.com/..." /></Field>
+              <form onSubmit={handleSubmit(onSubmit)} className="grid gap-8" noValidate>
+                <fieldset className="grid gap-4 sm:grid-cols-2">
+                  <legend className="font-headline text-sm mb-2 sm:col-span-2">{t('adminSettings.contactSection')}</legend>
+                  <p className="text-xs text-muted-foreground sm:col-span-2 -mt-1">{t('adminSettings.contactHint')}</p>
+                  <Field id="whatsappNumber" label={t('adminSettings.whatsappNumber')} hint={t('adminSettings.whatsappHint')} error={errorText('whatsappNumber')}>
+                    <Input id="whatsappNumber" dir="ltr" inputMode="tel" autoComplete="off" placeholder="+963 9XX XXX XXX" {...register('whatsappNumber')} />
+                  </Field>
+                  <Field id="contactPhone" label={t('adminSettings.contactPhone')} error={errorText('contactPhone')}>
+                    <Input id="contactPhone" dir="ltr" inputMode="tel" autoComplete="off" placeholder="+963 11 XXX XXXX" {...register('contactPhone')} />
+                  </Field>
+                  <Field id="contactEmail" label={t('adminSettings.contactEmail')} error={errorText('contactEmail')}>
+                    <Input id="contactEmail" dir="ltr" type="email" autoComplete="off" placeholder="support@3dtitans.org" {...register('contactEmail')} />
+                  </Field>
+                  <div className="hidden sm:block" aria-hidden />
+                  <Field id="contactHours" label={t('adminSettings.contactHoursEn')} error={errorText('contactHours')}>
+                    <Input id="contactHours" dir="ltr" lang="en" placeholder="Sat–Thu, 10:00–20:00" {...register('contactHours')} />
+                  </Field>
+                  <Field id="contactHoursAr" label={t('adminSettings.contactHoursAr')} error={errorText('contactHoursAr')}>
+                    <Input id="contactHoursAr" dir="rtl" lang="ar" placeholder="السبت – الخميس، 10:00 – 20:00" {...register('contactHoursAr')} />
+                  </Field>
+                  <Field id="contactAddress" label={t('adminSettings.contactAddressEn')} error={errorText('contactAddress')}>
+                    <Textarea id="contactAddress" dir="ltr" lang="en" rows={2} {...register('contactAddress')} />
+                  </Field>
+                  <Field id="contactAddressAr" label={t('adminSettings.contactAddressAr')} error={errorText('contactAddressAr')}>
+                    <Textarea id="contactAddressAr" dir="rtl" lang="ar" rows={2} {...register('contactAddressAr')} />
+                  </Field>
+                </fieldset>
+
+                <fieldset className="grid gap-4 sm:grid-cols-2">
+                  <legend className="font-headline text-sm mb-2 sm:col-span-2">{t('adminSettings.socialSection')}</legend>
+                  <Field id="facebookUrl" label={t('adminSettings.facebookUrl')} error={errorText('facebookUrl')}>
+                    <Input id="facebookUrl" dir="ltr" type="url" placeholder="https://www.facebook.com/..." {...register('facebookUrl')} />
+                  </Field>
+                  <Field id="instagramUrl" label={t('adminSettings.instagramUrl')} error={errorText('instagramUrl')}>
+                    <Input id="instagramUrl" dir="ltr" type="url" placeholder="https://www.instagram.com/..." {...register('instagramUrl')} />
+                  </Field>
+                </fieldset>
+
+                <fieldset className="grid gap-4 sm:grid-cols-2">
+                  <legend className="font-headline text-sm mb-2 sm:col-span-2">{t('adminSettings.textsSection')}</legend>
+                  <p className="text-xs text-muted-foreground sm:col-span-2 -mt-1">{t('adminSettings.textsHint')}</p>
+                  {TEXT_PAIRS.map(([enKey, arKey, labelKey, rows]) => (
+                    <div key={enKey} className="contents">
+                      <Field id={enKey} label={`${t(labelKey)} (${t('adminSettings.english')})`} error={errorText(enKey)}>
+                        {rows ? (
+                          <Textarea id={enKey} dir="ltr" lang="en" rows={rows} {...register(enKey)} />
+                        ) : (
+                          <Input id={enKey} dir="ltr" lang="en" {...register(enKey)} />
+                        )}
+                      </Field>
+                      <Field id={arKey} label={`${t(labelKey)} (${t('adminSettings.arabic')})`} error={errorText(arKey)}>
+                        {rows ? (
+                          <Textarea id={arKey} dir="rtl" lang="ar" rows={rows} {...register(arKey)} />
+                        ) : (
+                          <Input id={arKey} dir="rtl" lang="ar" {...register(arKey)} />
+                        )}
+                      </Field>
+                    </div>
+                  ))}
+                </fieldset>
+
                 <Button type="submit" disabled={loading} className="w-fit">
-                  {loading ? 'Saving…' : 'Save'}
+                  {loading ? t('adminSettings.saving') : t('adminSettings.save')}
                 </Button>
               </form>
             )}
@@ -132,11 +189,22 @@ export default function SettingsAdminPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label, children, id, hint, error,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** id of the control, so the label is associated with it. */
+  id?: string;
+  hint?: string;
+  error?: string;
+}) {
   return (
-    <div className="grid gap-2">
-      <Label>{label}</Label>
+    <div className="grid gap-2 content-start">
+      <Label htmlFor={id}>{label}</Label>
       {children}
+      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p className="text-xs font-semibold text-destructive" role="alert">{error}</p>}
     </div>
   );
 }
@@ -243,6 +311,7 @@ type PaymentSettings = {
   codEnabled: boolean;
   bankEnabled: boolean;
   shamCashEnabled: boolean;
+  shamCashEpayEnabled: boolean;
   syriatelCashEnabled: boolean;
   stripeEnabled: boolean;
   bankName: string;
@@ -255,13 +324,14 @@ type PaymentSettings = {
 };
 
 const PAYMENT_DEFAULTS: PaymentSettings = {
-  codEnabled: false, bankEnabled: false, shamCashEnabled: false, syriatelCashEnabled: false, stripeEnabled: false,
+  codEnabled: false, bankEnabled: false, shamCashEnabled: false, shamCashEpayEnabled: false, syriatelCashEnabled: false, stripeEnabled: false,
   bankName: '', bankAccountNumber: '', bankIban: '', bankAccountHolder: '',
-  shamCashNumber: '', syriatelCashNumber: '', currencyLabel: 'SYP',
+  shamCashNumber: '', syriatelCashNumber: '', currencyLabel: 'USD',
 };
 
 function PaymentsTab() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [state, setState] = useState<PaymentSettings>(PAYMENT_DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -276,6 +346,7 @@ function PaymentsTab() {
           codEnabled:          s['payment.codEnabled']          === 'true',
           bankEnabled:         s['payment.bankEnabled']         === 'true',
           shamCashEnabled:     s['payment.shamCashEnabled']     === 'true',
+          shamCashEpayEnabled: s['payment.shamCashEpayEnabled'] === 'true',
           syriatelCashEnabled: s['payment.syriatelCashEnabled'] === 'true',
           stripeEnabled:       s['payment.stripeEnabled']       === 'true',
           bankName:            s['payment.bankName']            || '',
@@ -284,7 +355,8 @@ function PaymentsTab() {
           bankAccountHolder:   s['payment.bankAccountHolder']   || '',
           shamCashNumber:      s['payment.shamCashNumber']      || '',
           syriatelCashNumber:  s['payment.syriatelCashNumber']  || '',
-          currencyLabel:       s['payment.currencyLabel']       || 'SYP',
+          // Only USD/SYP are accepted by the API; anything else shows (and saves) as USD.
+          currencyLabel:       (s['payment.currencyLabel'] || '').toUpperCase() === 'SYP' ? 'SYP' : 'USD',
         });
       } finally {
         setLoading(false);
@@ -299,6 +371,7 @@ function PaymentsTab() {
         'payment.codEnabled':           String(state.codEnabled),
         'payment.bankEnabled':          String(state.bankEnabled),
         'payment.shamCashEnabled':      String(state.shamCashEnabled),
+        'payment.shamCashEpayEnabled':  String(state.shamCashEpayEnabled),
         'payment.syriatelCashEnabled':  String(state.syriatelCashEnabled),
         'payment.stripeEnabled':        String(state.stripeEnabled),
         'payment.bankName':             state.bankName,
@@ -314,7 +387,10 @@ function PaymentsTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Save failed');
+      }
       toast({ title: 'Payment settings saved' });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Save failed', description: e.message });
@@ -333,19 +409,19 @@ function PaymentsTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Currency</CardTitle>
-          <CardDescription>
-            The currency your product prices are in. Shown on every price on the site, and used to match Sham Cash
-            transfers (SYP, USD or EUR).
-          </CardDescription>
+          <CardTitle>{t('adminSettings.currencyTitle')}</CardTitle>
+          <CardDescription>{t('adminSettings.currencyDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Input
+          <select
+            aria-label={t('adminSettings.currencyTitle')}
             value={state.currencyLabel}
-            onChange={(e) => patch('currencyLabel', e.target.value.toUpperCase().slice(0, 8))}
-            placeholder="e.g. SYP, USD, EUR"
-            className="max-w-[200px]"
-          />
+            onChange={(e) => patch('currencyLabel', e.target.value)}
+            className="h-10 max-w-[240px] w-full border-[3px] border-foreground bg-background px-3 text-sm font-bold"
+          >
+            <option value="USD">{t('adminSettings.currencyUsd')}</option>
+            <option value="SYP">{t('adminSettings.currencySyp')}</option>
+          </select>
         </CardContent>
       </Card>
 
@@ -374,9 +450,22 @@ function PaymentsTab() {
       </PaymentMethodCard>
 
       <PaymentMethodCard
+        icon={<Zap className="h-5 w-5" />}
+        title="ShamCash — online payment (e-pay)"
+        description="The customer is sent to the ShamCash app or website and confirms the bill with their transfer code. ShamCash notifies us automatically, so the order is marked paid without any screenshot. Needs SHAMCASH_BASE_URL, SHAMCASH_AGENT_KEY and SHAMCASH_SECRET_KEY in the server environment."
+        enabled={state.shamCashEpayEnabled}
+        onToggle={(v) => patch('shamCashEpayEnabled', v)}
+      >
+        {state.shamCashEpayEnabled && !['USD', 'SYP'].includes(state.currencyLabel.trim().toUpperCase()) && (
+          <MissingDetails text="ShamCash bills only in USD or SYP — change the store currency above, otherwise customers won't see this method." />
+        )}
+        <ShamCashEpayStatus />
+      </PaymentMethodCard>
+
+      <PaymentMethodCard
         icon={<Smartphone className="h-5 w-5" />}
-        title="Sham Cash"
-        description="Customer sends to your Sham Cash wallet with the order reference in the note. With the Sham Cash API connected, payments are confirmed automatically."
+        title="Sham Cash (manual transfer)"
+        description="Customer sends to your Sham Cash wallet with the order reference in the note, then uploads a screenshot. You confirm it in Orders."
         enabled={state.shamCashEnabled}
         onToggle={(v) => patch('shamCashEnabled', v)}
       >
@@ -386,7 +475,6 @@ function PaymentsTab() {
         <Field label="Sham Cash account number / address (shown to customers)">
           <Input value={state.shamCashNumber} onChange={(e) => patch('shamCashNumber', e.target.value)} />
         </Field>
-        <ShamCashApiStatus onUseAddress={(addr) => patch('shamCashNumber', addr)} />
       </PaymentMethodCard>
 
       <PaymentMethodCard
@@ -427,18 +515,23 @@ function MissingDetails({ text }: { text: string }) {
   return <p className="text-xs font-semibold text-destructive border-[2px] border-destructive p-2">{text}</p>;
 }
 
-type ShamCashStatus = {
+type ShamCashEpayStatusResponse = {
   configured: boolean;
   ok: boolean;
-  code?: string;
+  enabled?: boolean;
+  currency?: string;
+  currencySupported?: boolean;
+  host?: string | null;
+  result?: number | null;
   message?: string;
-  accounts?: { id: string; name: string; address: string | null; status: string; subscriptionExpiresAt: string | null }[];
 };
 
-/** "Test connection" for the Sham Cash API (keys live in server env vars). */
-function ShamCashApiStatus({ onUseAddress }: { onUseAddress: (address: string) => void }) {
-  const [status, setStatus] = useState<ShamCashStatus | null>(null);
+/** "Test connection" for ShamCash e-pay (keys live in server env vars; never shown here). */
+function ShamCashEpayStatus() {
+  const [status, setStatus] = useState<ShamCashEpayStatusResponse | null>(null);
   const [testing, setTesting] = useState(false);
+  const [origin, setOrigin] = useState('');
+  useEffect(() => setOrigin(window.location.origin), []);
 
   async function test() {
     setTesting(true);
@@ -453,40 +546,35 @@ function ShamCashApiStatus({ onUseAddress }: { onUseAddress: (address: string) =
   }
 
   return (
-    <div className="border-[2px] border-foreground/30 p-3 space-y-2 text-xs">
+    <div className="border-[2px] border-foreground/30 p-3 space-y-2 text-xs sm:col-span-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <strong className="font-headline uppercase tracking-wider text-[10px]">Automatic verification (Sham Cash API)</strong>
+        <strong className="font-headline uppercase tracking-wider text-[10px]">ShamCash connection</strong>
         <Button type="button" size="sm" variant="outline" onClick={test} disabled={testing}>
           {testing ? 'Testing…' : 'Test connection'}
         </Button>
       </div>
       {!status && (
         <p className="text-muted-foreground">
-          Needs SHAMCASH_BASE_URL and SHAMCASH_SECRET_KEY in the server environment. Press “Test connection” to check.
+          Press &ldquo;Test connection&rdquo; to check the keys with ShamCash (it only reads your recent transactions).
         </p>
       )}
       {status && (
         <div className="space-y-1">
           <p className={status.ok ? 'text-[hsl(var(--pixel-green))] font-semibold' : 'text-destructive font-semibold'}>
-            {status.ok ? 'Connected — payments will be confirmed automatically.' : status.configured ? 'Connection problem' : 'Not configured'}
+            {status.ok ? 'Connected' : status.configured ? 'Connection problem' : 'Not configured'}
+            {status.host ? ` — ${status.host}${status.host.startsWith('dev.') ? ' (sandbox)' : ''}` : ''}
           </p>
-          {status.message && <p>{status.code ? `${status.code}: ` : ''}{status.message}</p>}
-          {status.accounts?.map((a) => (
-            <div key={a.id} className="flex items-center justify-between gap-2 flex-wrap border-t pt-1">
-              <span>
-                {a.name || a.id} — {a.status}
-                {a.subscriptionExpiresAt ? ` (subscription until ${new Date(a.subscriptionExpiresAt).toLocaleDateString()})` : ''}
-                {a.address ? ` — ${a.address}` : ''}
-              </span>
-              {a.address && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => onUseAddress(a.address!)}>
-                  Use this address
-                </Button>
-              )}
-            </div>
-          ))}
+          {status.message && <p>{status.result ? `Code ${status.result}: ` : ''}{status.message}</p>}
+          {status.currencySupported === false && (
+            <p className="text-destructive">Store currency {status.currency || '?'} is not supported — use USD or SYP.</p>
+          )}
         </div>
       )}
+      <p className="text-muted-foreground break-all">
+        Payment notifications (webhook) are sent by ShamCash to{' '}
+        <span className="font-mono">{origin || 'https://your-domain'}/api/payments/shamcash/webhook</span> — it is passed with
+        every bill, so there is nothing to register. Remember to save after switching this method on.
+      </p>
     </div>
   );
 }

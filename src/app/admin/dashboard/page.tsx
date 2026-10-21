@@ -13,6 +13,8 @@ import { useSessionUser } from '@/hooks/use-session';
 import { useProducts, useUploads, useOrders, useStores } from '@/hooks/use-data';
 import { useUsers } from '@/hooks/use-session';
 import { format } from 'date-fns';
+import { useTranslation } from '@/components/language-provider';
+import { isArchivedProduct } from '@/components/admin/product-archive';
 
 
 export default function DashboardPage() {
@@ -20,13 +22,17 @@ export default function DashboardPage() {
     const { toast } = useToast();
     const { data: products, loading: productsLoading } = useProducts();
     const { data: uploads, loading: uploadsLoading } = useUploads();
-    const { data: orders, loading: ordersLoading } = useOrders();
+    const { data: orders, loading: ordersLoading, hasMore: moreOrders } = useOrders();
     const { data: users, loading: usersLoading } = useUsers();
     const { data: stores, loading: storesLoading, refresh: refreshStores } = useStores({ includeUnpublished: true });
     const [storeSort, setStoreSort] = useState<'manual' | 'recent' | 'name' | 'products'>('manual');
     const [manualOrder, setManualOrder] = useState<string[]>([]);
     const [savingOrder, setSavingOrder] = useState(false);
     const isLoading = productsLoading || uploadsLoading || ordersLoading || usersLoading;
+    const { t } = useTranslation();
+    // Archived products are out of the shop: count them separately.
+    const archivedProducts = useMemo(() => (products || []).filter(isArchivedProduct).length, [products]);
+    const activeProducts = (products?.length || 0) - archivedProducts;
 
     const getDateValue = (value?: any) => {
         if (!value) return 0;
@@ -122,12 +128,17 @@ export default function DashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            Total Products
+                            {t('uploads.archive.dashActiveProducts', 'Products in the shop')}
                         </CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <Package className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{products?.length || 0}</div>}
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{activeProducts}</div>}
+                        {!isLoading && archivedProducts > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                                {t('uploads.archive.dashArchivedCount', '+ {count} archived', { count: archivedProducts })}
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
                 <Card>
@@ -156,7 +167,14 @@ export default function DashboardPage() {
                         <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold">{orders?.length || 0}</div>}
+                        {isLoading ? <Skeleton className="h-8 w-16" /> : (
+                            <div className="text-2xl font-bold">
+                                {/* The orders API returns the newest 100 only. */}
+                                {moreOrders
+                                    ? t('uploads.dash.countPlus', '{count}+', { count: orders?.length || 0 })
+                                    : orders?.length || 0}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

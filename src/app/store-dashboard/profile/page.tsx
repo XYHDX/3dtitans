@@ -12,7 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { supabase } from '@/lib/supabase/client';
+import { useTranslation } from '@/components/language-provider';
+import { DirectUploadError, uploadErrorMessage, uploadFileDirect } from '@/lib/supabase/direct-upload';
+import { acceptAttribute, allowedExtension, maxMegabytes, UPLOAD_KINDS } from '@/lib/supabase/upload-kinds';
 
 type FormState = {
   name: string;
@@ -34,6 +36,8 @@ const defaultState: FormState = {
   isPublished: false,
 };
 
+const IMAGE_ACCEPT = acceptAttribute('image');
+
 function initials(name: string) {
   if (!name) return 'ST';
   return name
@@ -47,6 +51,7 @@ function initials(name: string) {
 export default function StoreProfilePage() {
   const { user } = useSessionUser();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { data: stores, loading, createStore, updateStore } = useStores(
     user?.role === 'store-owner' && user.id
       ? { ownerId: user.id, includeUnpublished: true }
@@ -57,6 +62,7 @@ export default function StoreProfilePage() {
   const [saving, setSaving] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<{ avatar?: string; cover?: string }>({});
 
   const store = useMemo(() => (stores && stores.length > 0 ? stores[0] : null), [stores]);
 
@@ -85,6 +91,31 @@ export default function StoreProfilePage() {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
+  /** Validate a picked image (same rules as the server) before accepting it. */
+  const pickImage = (which: 'avatar' | 'cover', file: File | null, input: HTMLInputElement) => {
+    const setFile = which === 'avatar' ? setAvatarFile : setCoverFile;
+    if (!file) {
+      setFile(null);
+      setFileError((prev) => ({ ...prev, [which]: undefined }));
+      return;
+    }
+    let error: string | undefined;
+    if (!allowedExtension('image', file.name)) {
+      error = t('uploads.err.badType', 'This file type is not accepted. Allowed: {types}.', {
+        types: UPLOAD_KINDS.image.extensions.join(' '),
+      });
+    } else if (file.size > UPLOAD_KINDS.image.maxBytes) {
+      error = t('uploads.err.tooLarge', 'This file is too large. The maximum is {size} MB.', { size: maxMegabytes('image') });
+    }
+    if (error) {
+      input.value = '';
+      setFile(null);
+    } else {
+      setFile(file);
+    }
+    setFileError((prev) => ({ ...prev, [which]: error }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -103,30 +134,13 @@ export default function StoreProfilePage() {
     };
 
     try {
-      if ((avatarFile || coverFile) && !supabase) {
-        throw new Error('Storage is not configured');
+      // Images go straight to the product-images bucket through signed upload
+      // URLs issued by /api/storage/upload-url (store owners/admins only).
+      if (avatarFile) {
+        nextAvatarUrl = (await uploadFileDirect(avatarFile, 'image')).url;
       }
-
-      if (avatarFile && supabase) {
-        const ext = avatarFile.name.split('.').pop();
-        const path = `stores/${user.id}/avatar-${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from('product-images')
-          .upload(path, avatarFile, { cacheControl: '3600', upsert: true });
-        if (uploadErr) throw uploadErr;
-        const { data: publicUrl } = supabase.storage.from('product-images').getPublicUrl(path);
-        nextAvatarUrl = publicUrl?.publicUrl || nextAvatarUrl;
-      }
-
-      if (coverFile && supabase) {
-        const ext = coverFile.name.split('.').pop();
-        const path = `stores/${user.id}/cover-${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from('product-images')
-          .upload(path, coverFile, { cacheControl: '3600', upsert: true });
-        if (uploadErr) throw uploadErr;
-        const { data: publicUrl } = supabase.storage.from('product-images').getPublicUrl(path);
-        nextCoverUrl = publicUrl?.publicUrl || nextCoverUrl;
+      if (coverFile) {
+        nextCoverUrl = (await uploadFileDirect(coverFile, 'image')).url;
       }
 
       payload.avatarUrl = nextAvatarUrl;
@@ -137,17 +151,20 @@ export default function StoreProfilePage() {
         : await createStore(payload);
 
       if (!result) {
-        toast({ title: 'Could not save store', variant: 'destructive' });
+        toast({ title: t('uploads.store.saveFailed', 'Could not save the store'), variant: 'destructive' });
       } else {
-        toast({ title: 'Store profile saved' });
+        toast({ title: t('uploads.store.saved', 'Store profile saved') });
         setAvatarFile(null);
         setCoverFile(null);
         setForm((prev) => ({ ...prev, avatarUrl: payload.avatarUrl, coverUrl: payload.coverUrl }));
       }
     } catch (error) {
       console.error('Failed to save store', error);
-      const message = (error as any)?.message || 'Could not save store';
-      toast({ title: 'Could not save store', description: message, variant: 'destructive' });
+      const message =
+        error instanceof DirectUploadError
+          ? uploadErrorMessage(error, t, 'image')
+          : t('uploads.products.genericError', 'Something went wrong. Please try again.');
+      toast({ title: t('uploads.store.saveFailed', 'Could not save the store'), description: message, variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -158,8 +175,10 @@ export default function StoreProfilePage() {
       <div className="max-w-xl mx-auto mt-16">
         <Card>
           <CardHeader>
-            <CardTitle>Please log in</CardTitle>
-            <CardDescription>You need to be logged in as a store owner to edit your store profile.</CardDescription>
+            <CardTitle>{t('uploads.store.loginTitle', 'Please log in')}</CardTitle>
+            <CardDescription>
+              {t('uploads.store.loginDesc', 'You need to be logged in as a store owner to edit your store profile.')}
+            </CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -171,93 +190,129 @@ export default function StoreProfilePage() {
       <div className="max-w-xl mx-auto mt-16">
         <Card>
           <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-            <CardDescription>This page is only available for store owners.</CardDescription>
+            <CardTitle>{t('uploads.common.accessDenied', 'Access denied')}</CardTitle>
+            <CardDescription>{t('uploads.store.ownersOnly', 'This page is only available for store owners.')}</CardDescription>
           </CardHeader>
         </Card>
       </div>
     );
   }
 
+  const imageHint = t('uploads.store.imageHint', 'JPG, PNG or WEBP, up to {size} MB.', { size: maxMegabytes('image') });
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Store Profile</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t('uploads.store.title', 'Store profile')}</h1>
         <p className="text-muted-foreground">
-          Control how your store appears on the marketplace. Add a profile photo, cover, bio, and website link.
+          {t('uploads.store.subtitle', 'Control how your store appears on the marketplace. Add a profile photo, cover, bio, and website link.')}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Public details</CardTitle>
-          <CardDescription>These details appear on your store page and in the store directory.</CardDescription>
+          <CardTitle>{t('uploads.store.publicTitle', 'Public details')}</CardTitle>
+          <CardDescription>
+            {t('uploads.store.publicDesc', 'These details appear on your store page and in the store directory.')}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Store name</Label>
-                <Input id="name" value={form.name} onChange={handleChange('name')} placeholder="My Studio" />
+                <Label htmlFor="name">{t('uploads.store.name', 'Store name')}</Label>
+                <Input id="name" value={form.name} onChange={handleChange('name')} placeholder={t('uploads.store.namePlaceholder', 'My Studio')} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="slug">Slug</Label>
+                <Label htmlFor="slug">{t('uploads.store.slug', 'Slug')}</Label>
                 <Input
                   id="slug"
+                  dir="ltr"
                   value={form.slug}
                   onChange={handleChange('slug')}
                   placeholder="my-studio"
                 />
-                <p className="text-xs text-muted-foreground">Used in the URL: /stores/{form.slug || 'your-slug'}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('uploads.store.slugHint', 'Used in the URL: {url}', { url: `/stores/${form.slug || 'your-slug'}` })}
+                </p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="bio">Short bio</Label>
+              <Label htmlFor="bio">{t('uploads.store.bio', 'Short bio')}</Label>
               <Textarea
                 id="bio"
                 rows={4}
                 value={form.bio}
                 onChange={handleChange('bio')}
-                placeholder="Tell customers what you make, your style, and what makes your store unique."
+                placeholder={t('uploads.store.bioPlaceholder', 'Tell customers what you make, your style, and what makes your store unique.')}
               />
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="avatarUrl">Profile photo URL</Label>
+                <Label htmlFor="avatarUrl">{t('uploads.store.avatarUrl', 'Profile photo URL')}</Label>
                 <Input
                   id="avatarUrl"
+                  dir="ltr"
                   value={form.avatarUrl}
                   onChange={handleChange('avatarUrl')}
                   placeholder="https://"
                 />
+                <Label htmlFor="avatarFile" className="text-xs">
+                  {t('uploads.store.avatarFile', 'Or upload a profile photo')}
+                </Label>
                 <Input
+                  id="avatarFile"
                   type="file"
-                  accept="image/*"
-                  onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+                  accept={IMAGE_ACCEPT}
+                  aria-describedby="avatarFile-hint"
+                  aria-invalid={!!fileError.avatar}
+                  onChange={(e) => pickImage('avatar', e.target.files?.[0] || null, e.target)}
                 />
+                <p
+                  id="avatarFile-hint"
+                  className={`text-xs ${fileError.avatar ? 'text-destructive' : 'text-muted-foreground'}`}
+                  role={fileError.avatar ? 'alert' : undefined}
+                >
+                  {fileError.avatar || imageHint}
+                </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="coverUrl">Cover image URL</Label>
+                <Label htmlFor="coverUrl">{t('uploads.store.coverUrl', 'Cover image URL')}</Label>
                 <Input
                   id="coverUrl"
+                  dir="ltr"
                   value={form.coverUrl}
                   onChange={handleChange('coverUrl')}
                   placeholder="https://"
                 />
+                <Label htmlFor="coverFile" className="text-xs">
+                  {t('uploads.store.coverFile', 'Or upload a cover image')}
+                </Label>
                 <Input
+                  id="coverFile"
                   type="file"
-                  accept="image/*"
-                  onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                  accept={IMAGE_ACCEPT}
+                  aria-describedby="coverFile-hint"
+                  aria-invalid={!!fileError.cover}
+                  onChange={(e) => pickImage('cover', e.target.files?.[0] || null, e.target)}
                 />
+                <p
+                  id="coverFile-hint"
+                  className={`text-xs ${fileError.cover ? 'text-destructive' : 'text-muted-foreground'}`}
+                  role={fileError.cover ? 'alert' : undefined}
+                >
+                  {fileError.cover || imageHint}
+                </p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="websiteUrl">Website</Label>
+              <Label htmlFor="websiteUrl">{t('uploads.store.website', 'Website')}</Label>
               <Input
                 id="websiteUrl"
+                dir="ltr"
                 value={form.websiteUrl}
                 onChange={handleChange('websiteUrl')}
                 placeholder="https://your-portfolio.com"
@@ -266,16 +321,16 @@ export default function StoreProfilePage() {
 
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12">
-                <AvatarImage src={form.avatarUrl || undefined} alt={form.name || 'Store avatar'} />
+                <AvatarImage src={form.avatarUrl || undefined} alt={form.name || t('uploads.store.avatarAlt', 'Store avatar')} />
                 <AvatarFallback>{initials(form.name)}</AvatarFallback>
               </Avatar>
               <Badge variant={store?.isPublished ? 'default' : 'secondary'}>
-                {store?.isPublished ? 'Published' : 'Draft'}
+                {store?.isPublished ? t('uploads.store.published', 'Published') : t('uploads.store.draft', 'Draft')}
               </Badge>
               <p className="text-sm text-muted-foreground">
                 {store?.isPublished
-                  ? 'Your store is live in the directory.'
-                  : 'Publish will be reviewed by the team.'}
+                  ? t('uploads.store.liveNote', 'Your store is live in the directory.')
+                  : t('uploads.store.reviewNote', 'Publishing will be reviewed by the team.')}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -283,16 +338,20 @@ export default function StoreProfilePage() {
                 id="isPublished"
                 checked={form.isPublished}
                 onCheckedChange={(val) => setForm((prev) => ({ ...prev, isPublished: val }))}
-                aria-label="Publish store"
               />
               <Label htmlFor="isPublished" className="text-sm">
-                {form.isPublished ? 'Published' : 'Draft'} (toggle to publish/unpublish)
+                {form.isPublished ? t('uploads.store.published', 'Published') : t('uploads.store.draft', 'Draft')}{' '}
+                {t('uploads.store.toggleHint', '(toggle to publish/unpublish)')}
               </Label>
             </div>
 
             <div className="flex justify-end">
               <Button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : 'Save profile'}
+                {saving
+                  ? avatarFile || coverFile
+                    ? t('uploads.store.uploading', 'Uploading images...')
+                    : t('uploads.common.saving', 'Saving...')
+                  : t('uploads.store.save', 'Save profile')}
               </Button>
             </div>
           </form>

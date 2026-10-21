@@ -68,7 +68,7 @@ Future<PickedFile?> pickStl() async {
 }
 
 /// Card that lets the customer attach a payment screenshot and/or transfer
-/// reference to an order (`POST /api/storage/upload` + `/api/payments/proof`).
+/// reference to an order (`TitansApi.uploadFile` + `/api/payments/proof`).
 class PaymentProofCard extends StatefulWidget {
   const PaymentProofCard({super.key, required this.orderId, this.compact = false});
 

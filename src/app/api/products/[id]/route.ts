@@ -1,7 +1,7 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
-import { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 
 function mapProduct(product: any) {
@@ -37,33 +37,13 @@ function mapProduct(product: any) {
     has3dPreview: product.has3dPreview || false,
     createdAt: product.createdAt,
     isPrioritizedStore: !!product.uploader?.isPrioritizedStore,
+    // Archived = removed from the shop; only its admin / owner can still see it.
+    archivedAt: product.archivedAt || null,
   };
 }
 
-async function ensureSiteSettingTable() {
-  try {
-    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
-    return true;
-  } catch (error) {
-    try {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "SiteSetting" (
-          "key" TEXT PRIMARY KEY,
-          "value" TEXT NOT NULL,
-          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      return true;
-    } catch (err) {
-      console.error('Failed to ensure SiteSetting table', err);
-      return false;
-    }
-  }
-}
-
+/** Legacy store priority list (before User.isPrioritizedStore existed). Read-only. */
 async function getPrioritizedIds() {
-  const ok = await ensureSiteSettingTable();
-  if (!ok) return new Set<string>();
   try {
     const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
     if (!prioritizedSetting?.value) return new Set<string>();
@@ -81,170 +61,143 @@ function parsePrice(raw: unknown): number | null {
   return Math.round(n * 100) / 100;
 }
 
-async function canManage(user: any, product: any) {
+/** Drop the ISR caches of the catalog pages (tags set by the catalog's unstable_cache). */
+function revalidateProduct(id: string) {
+  try {
+    revalidateTag('products');
+    revalidateTag(`product:${id}`);
+  } catch (err) {
+    console.error('revalidateTag failed', err);
+  }
+}
+
+function canManage(user: any, product: { uploaderId: string }) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   if (user.role === 'store-owner' && product.uploaderId === user.id) return true;
   return false;
 }
 
+const productInclude = {
+  // Public response — no email field, that's PII for the uploader.
+  uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
+  store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+} as const;
+
+/** GET /api/products/[id] — archived products are 404 except for their admin / owner. */
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const prioritizedIds = await getPrioritizedIds();
-
-    const product = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        // Public response — no email field, that's PII for the uploader.
-        uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
-        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
-      },
-    });
+    const product = await prisma.product.findUnique({ where: { id }, include: productInclude });
     if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (product.archivedAt) {
+      const session = await getServerSession(authOptions);
+      if (!canManage(session?.user, product)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const prioritizedIds = await getPrioritizedIds();
     const mapped = mapProduct(product);
     mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(product.uploaderId);
     return NextResponse.json({ product: mapped });
   } catch (error) {
-    console.error('Product GET failed (priority include)', error);
-    const fallback = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        uploader: { select: { id: true, name: true } },
-        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
-      },
-    });
-    if (!fallback) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const prioritizedIds = await getPrioritizedIds();
-    const mapped = mapProduct(fallback);
-    mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(fallback.uploaderId);
-    return NextResponse.json({ product: mapped });
+    console.error('Product GET failed', error);
+    return NextResponse.json({ error: 'Failed to load product' }, { status: 500 });
   }
 }
 
+/**
+ * PATCH /api/products/[id] — edit (admin / owning store owner).
+ * `{ archived: true | false }` archives or restores the product.
+ */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  const user = session?.user;
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const existing = await prisma.product.findUnique({ where: { id } });
-  if (!existing || !(await canManage(user, existing))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
-
-  const body = await req.json();
-  const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery } = body;
-  const { storeId } = body as { storeId?: string };
-
-  const updateData: any = {};
-  if (name !== undefined) updateData.name = name;
-  if (category !== undefined) updateData.category = category;
-  if (price !== undefined) {
-    const validPrice = parsePrice(price);
-    if (validPrice === null) return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
-    updateData.price = validPrice;
-  }
-  if (description !== undefined) updateData.description = description;
-  if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.join(',') : tags;
-  if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
-  if (imageHint !== undefined) updateData.imageHint = imageHint;
-  if (has3dPreview !== undefined) updateData.has3dPreview = has3dPreview;
-  if (storeId !== undefined) {
-    if (storeId === null) {
-      updateData.storeId = null;
-    } else {
-      const store = await prisma.store.findUnique({ where: { id: storeId } });
-      if (!store) return NextResponse.json({ error: 'Invalid storeId' }, { status: 400 });
-      if (user.role === 'store-owner' && store.ownerId !== user.id) {
-        return NextResponse.json({ error: 'Unauthorized for this store' }, { status: 403 });
-      }
-      updateData.storeId = storeId;
-    }
-  }
-  if (imageGallery !== undefined) {
-    updateData.imageGallery = Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : imageGallery;
-  }
-
   try {
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateData,
-      include: {
-        uploader: { select: { id: true, name: true, email: true, isPrioritizedStore: true } },
-        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
-      },
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing || !canManage(user, existing)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { name, category, price, description, tags, imageUrl, imageHint, has3dPreview, imageGallery, archived } = body || {};
+    const { storeId } = (body || {}) as { storeId?: string | null };
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (category !== undefined) updateData.category = category;
+    if (price !== undefined) {
+      const validPrice = parsePrice(price);
+      if (validPrice === null) return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+      updateData.price = validPrice;
+    }
+    if (description !== undefined) updateData.description = description;
+    if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.join(',') : tags;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (imageHint !== undefined) updateData.imageHint = imageHint;
+    if (has3dPreview !== undefined) updateData.has3dPreview = has3dPreview;
+    if (storeId !== undefined) {
+      if (storeId === null) {
+        updateData.storeId = null;
+      } else {
+        const store = await prisma.store.findUnique({ where: { id: storeId } });
+        if (!store) return NextResponse.json({ error: 'Invalid storeId' }, { status: 400 });
+        if (user.role === 'store-owner' && store.ownerId !== user.id) {
+          return NextResponse.json({ error: 'Unauthorized for this store' }, { status: 403 });
+        }
+        updateData.storeId = storeId;
+      }
+    }
+    if (imageGallery !== undefined) {
+      updateData.imageGallery = Array.isArray(imageGallery) ? JSON.stringify(imageGallery) : imageGallery;
+    }
+    if (typeof archived === 'boolean') {
+      updateData.archivedAt = archived ? existing.archivedAt || new Date() : null;
+    }
+
+    const product = await prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({ where: { id }, data: updateData, include: productInclude });
+      // An archived product can't be bought: take it out of every cart.
+      if (archived === true) await tx.cartItem.deleteMany({ where: { productId: id } });
+      return updated;
     });
+    revalidateProduct(id);
     return NextResponse.json({ product: mapProduct(product) });
   } catch (error) {
-    console.error('Product PATCH failed (priority include)', error);
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateData,
-      include: {
-        uploader: { select: { id: true, name: true, email: true } },
-        store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
-      },
-    });
-    const prioritizedIds = await getPrioritizedIds();
-    const mapped = mapProduct(product);
-    mapped.isPrioritizedStore = mapped.isPrioritizedStore || prioritizedIds.has(product.uploaderId);
-    return NextResponse.json({ product: mapped });
+    console.error('Product PATCH failed', error);
+    return NextResponse.json({ error: 'Failed to update product' }, { status: 500 });
   }
 }
 
+/**
+ * DELETE /api/products/[id] — archives the product (soft delete).
+ *
+ * Orders are NEVER touched: their lines keep the product's name, price and
+ * image, totals and payments stay exactly as they were. The product disappears
+ * from the shop, carts and new orders, and can be restored with
+ * PATCH { archived: false }.
+ */
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  const user = session?.user;
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const existing = await prisma.product.findUnique({ where: { id } });
-  if (!existing || !(await canManage(user, existing))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
-
   try {
-    const ordersWithProduct = await prisma.order.findMany({
-      where: { items: { some: { productId: id } } },
-      include: { items: true, assignments: true },
-    });
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await prisma.$transaction(async (tx) => {
-      for (const order of ordersWithProduct) {
-        const remainingItems = order.items.filter((item: any) => item.productId !== id);
-        const removeIds = order.items.filter((item: any) => item.productId === id).map((i: any) => i.id);
-
-        if (removeIds.length) {
-          await tx.orderItem.deleteMany({ where: { id: { in: removeIds } } });
-        }
-
-        if (remainingItems.length === 0) {
-          await tx.orderAssignment.deleteMany({ where: { orderId: order.id } });
-          await tx.order.delete({ where: { id: order.id } });
-        } else {
-          const newTotal = remainingItems.reduce(
-            (sum: number, item: any) => sum + Number(item.price) * item.quantity,
-            0
-          );
-          await tx.order.update({
-            where: { id: order.id },
-            data: { totalAmount: new Prisma.Decimal(newTotal) },
-          });
-        }
-      }
-
-      await tx.product.delete({ where: { id } });
-    });
-  } catch (err) {
-    console.error('Product delete transaction failed, attempting direct delete', err);
-    try {
-      await prisma.product.delete({ where: { id } });
-    } catch (err2) {
-      console.error('Product direct delete failed', err2);
-      return NextResponse.json({ error: 'Failed to delete product' }, { status: 500 });
+    const existing = await prisma.product.findUnique({ where: { id }, select: { id: true, uploaderId: true, archivedAt: true } });
+    if (!existing || !canManage(user, existing)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
-  }
 
-  return NextResponse.json({ ok: true });
+    await prisma.$transaction([
+      prisma.product.update({ where: { id }, data: { archivedAt: existing.archivedAt || new Date() } }),
+      prisma.cartItem.deleteMany({ where: { productId: id } }),
+    ]);
+    revalidateProduct(id);
+    return NextResponse.json({ ok: true, archived: true });
+  } catch (err) {
+    console.error('Product archive failed', err);
+    return NextResponse.json({ error: 'Failed to delete product' }, { status: 500 });
+  }
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
+import { useCart } from '@/hooks/use-cart';
 
 export function useSessionUser() {
   const { data, status } = useSession();
@@ -25,22 +26,56 @@ export function useSessionUser() {
   return { user, status };
 }
 
+/**
+ * Sanitise a post-login redirect target (`?next=` / `?callbackUrl=`) to prevent
+ * open redirects: only same-origin relative paths that start with a single '/'
+ * are accepted — never '//host', '/\\host', a scheme (https:, javascript:) or
+ * control characters. Absolute URLs on our own origin are reduced to their path.
+ * Auth pages themselves are not valid targets (avoids login ↔ signup loops).
+ */
+export function safeNextPath(raw: string | null | undefined, fallback = '/'): string {
+  if (!raw) return fallback;
+  let value = raw.trim();
+  if (typeof window !== 'undefined' && /^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      if (url.origin !== window.location.origin) return fallback;
+      value = url.pathname + url.search + url.hash;
+    } catch {
+      return fallback;
+    }
+  }
+  if (!value.startsWith('/') || value.startsWith('//')) return fallback;
+  // Backslashes are treated like '/' by browsers ('/\\evil.com'); control chars can hide tricks.
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return fallback;
+  if (/^\/(login|signup|forgot-password|reset-password)(?:[/?#]|$)/.test(value)) return fallback;
+  return value;
+}
+
+/** Error codes the login/signup forms translate into friendly messages. */
+export type AuthErrorCode = 'invalid' | 'exists' | 'weak_password' | 'invalid_email' | 'invalid_phone' | 'too_many' | 'unknown';
+
 export function useLogin() {
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<{ ok: boolean; code?: AuthErrorCode }> => {
     const result = await signIn('credentials', {
       redirect: false,
       email,
       password,
     });
 
-    if (result?.error) {
-      return { ok: false, message: 'Invalid credentials' };
+    if (!result || result.error) {
+      return { ok: false, code: 'invalid' };
     }
 
     return { ok: true };
   };
 
-  const signup = async (params: { email: string; password: string; displayName?: string }) => {
+  const signup = async (params: {
+    email: string;
+    password: string;
+    displayName?: string;
+    phoneNumber?: string;
+  }): Promise<{ ok: boolean; code?: AuthErrorCode; created?: boolean }> => {
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,19 +83,40 @@ export function useLogin() {
         email: params.email,
         password: params.password,
         name: params.displayName,
+        // Optional phone / WhatsApp number (ignored by servers that don't store it yet).
+        ...(params.phoneNumber ? { phoneNumber: params.phoneNumber } : {}),
       }),
     });
 
     if (!res.ok) {
+      // Never surface raw server text — map the status to a code the page translates.
       const body = await res.json().catch(() => null);
-      return { ok: false, message: body?.error || 'Could not sign up' };
+      if (body?.error) console.warn('Signup failed:', res.status, body.error);
+      const raw = String(body?.error || '').toLowerCase();
+      const code: AuthErrorCode =
+        res.status === 409
+          ? 'exists'
+          : res.status === 429
+          ? 'too_many'
+          : res.status === 400 && raw.includes('password')
+          ? 'weak_password'
+          : res.status === 400 && raw.includes('email')
+          ? 'invalid_email'
+          : res.status === 400 && raw.includes('phone')
+          ? 'invalid_phone'
+          : 'unknown';
+      return { ok: false, code };
     }
 
-    return login(params.email, params.password);
+    const loggedIn = await login(params.email, params.password);
+    return { ...loggedIn, created: true };
   };
 
   const logout = async () => {
     await signOut({ redirect: false });
+    // Shared devices: drop the cart from memory and localStorage so the next
+    // person doesn't inherit it (CartSync also does this on any session loss).
+    useCart.getState()._resetLocal();
   };
 
   return { login, signup, logout };

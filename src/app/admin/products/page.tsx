@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from '@/hooks/use-currency';
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -26,8 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Product } from "@/lib/types";
-import { format } from "date-fns";
-import { Trash2, Edit, X, Upload } from "lucide-react";
+import { Trash2, Edit, Upload, Archive } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
 import {
@@ -44,7 +43,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -54,41 +52,45 @@ import {
 import Link from "next/link";
 import { useSessionUser } from "@/hooks/use-session";
 import { useProducts } from "@/hooks/use-data";
-import { supabase } from "@/lib/supabase/client";
+import { useTranslation } from "@/components/language-provider";
+import { uploadErrorMessage, uploadFileDirect } from "@/lib/supabase/direct-upload";
+import { acceptAttribute, allowedExtension, UPLOAD_KINDS } from "@/lib/supabase/upload-kinds";
+import { ArchivedBadge, RestoreProductButton, activeFirst, isArchivedProduct } from "@/components/admin/product-archive";
 
+const MAX_IMAGES = 3;
+const IMAGE_MAX_BYTES = UPLOAD_KINDS.image.maxBytes;
+const IMAGE_ACCEPT = acceptAttribute("image");
+const PRODUCT_FALLBACK_IMAGE = "/images/product-fallback.svg";
+
+/** Image files are checked by extension (the same rule the server applies). */
+const isValidImage = (f: File) => f.size > 0 && f.size <= IMAGE_MAX_BYTES && !!allowedExtension("image", f.name);
+
+// Zod messages are translation keys; they are passed through t() when shown.
 const productSchema = z.object({
-  name: z.string().min(3, "Name must be at least 3 characters"),
-  price: z.coerce.number().min(0, "Price must be a positive number"),
-  category: z.string().min(2, "Category is required"),
+  name: z.string().min(3, "uploads.products.errName"),
+  price: z.coerce.number().min(0, "uploads.products.errPrice"),
+  category: z.string().min(2, "uploads.products.errCategory"),
   description: z.string().optional(),
   tags: z.string().optional(),
   imageFiles: z
     .any()
-    .refine((files) => files?.length >= 1, "At least one image is required")
+    .refine((files) => files?.length >= 1, "uploads.products.errImageRequired")
     .refine(
-      (files) => !files || files.length <= 3,
-      "You can upload up to 3 images",
+      (files) => !files || files.length <= MAX_IMAGES,
+      "uploads.products.errImageCount",
     )
     .refine(
-      (files) =>
-        !files ||
-        Array.from(files).every(
-          (f: any) =>
-            f.size <= 5 * 1024 * 1024 &&
-            ["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(
-              f.type,
-            ),
-        ),
-      "Images must be JPG/PNG/WEBP and under 5MB each",
+      (files) => !files || Array.from(files as FileList).every(isValidImage),
+      "uploads.products.errImageFormat",
     ),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
 
 const editProductSchema = z.object({
-  name: z.string().min(3, "Name must be at least 3 characters"),
-  price: z.coerce.number().min(0, "Price must be a positive number"),
-  category: z.string().min(2, "Category is required"),
+  name: z.string().min(3, "uploads.products.errName"),
+  price: z.coerce.number().min(0, "uploads.products.errPrice"),
+  category: z.string().min(2, "uploads.products.errCategory"),
   description: z.string().optional(),
   tags: z.string().optional(),
 });
@@ -97,6 +99,17 @@ type EditProductFormData = z.infer<typeof editProductSchema>;
 type ImageItem =
   | { type: "existing"; url: string; id: string }
   | { type: "new"; file: File; id: string; previewUrl: string };
+
+/** Uploads product photos one by one through signed upload URLs; returns public URLs. */
+async function uploadProductImages(files: File[], onStep?: (index: number) => void): Promise<string[]> {
+  const urls: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    onStep?.(i);
+    const stored = await uploadFileDirect(files[i], "image");
+    urls.push(stored.url);
+  }
+  return urls;
+}
 
 function EditProductDialog({
   product,
@@ -108,6 +121,7 @@ function EditProductDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
   const existingGallery = useMemo(
     () =>
       (product.imageGallery && product.imageGallery.length
@@ -119,7 +133,7 @@ function EditProductDialog({
 
   const [images, setImages] = useState<ImageItem[]>(() =>
     existingGallery
-      .slice(0, 3)
+      .slice(0, MAX_IMAGES)
       .map((url, i) => ({ type: "existing", url, id: `ext-${i}` })),
   );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -159,21 +173,19 @@ function EditProductDialog({
 
     // Validate
     const validFiles = files.filter((f) => {
-      if (f.size > 5 * 1024 * 1024) {
+      if (f.size > IMAGE_MAX_BYTES) {
         toast({
           variant: "destructive",
-          title: "File too large",
-          description: `${f.name} exceeds 5MB.`,
+          title: t("uploads.products.tooLargeTitle", "File too large"),
+          description: t("uploads.products.tooLargeDesc", "{name} is larger than 5 MB.", { name: f.name }),
         });
         return false;
       }
-      if (
-        !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(f.type)
-      ) {
+      if (!isValidImage(f)) {
         toast({
           variant: "destructive",
-          title: "Invalid format",
-          description: `${f.name} must be JPG/PNG/WEBP.`,
+          title: t("uploads.products.badFormatTitle", "Invalid format"),
+          description: t("uploads.products.badFormatDesc", "{name} must be a JPG, PNG or WEBP image.", { name: f.name }),
         });
         return false;
       }
@@ -201,13 +213,16 @@ function EditProductDialog({
       setReplaceIndex(null);
       if (replaceInputRef.current) replaceInputRef.current.value = "";
     } else {
-      const availableSlots = 3 - images.length;
+      const availableSlots = MAX_IMAGES - images.length;
       const filesToAdd = validFiles.slice(0, availableSlots);
 
       if (files.length > availableSlots) {
         toast({
-          title: "Limit reached",
-          description: `Only added ${availableSlots} image(s). Max 3 allowed total.`,
+          title: t("uploads.products.limitTitle", "Limit reached"),
+          description: t("uploads.products.limitDesc", "Only {count} image(s) added. Maximum {max} in total.", {
+            count: availableSlots,
+            max: MAX_IMAGES,
+          }),
         });
       }
 
@@ -228,32 +243,20 @@ function EditProductDialog({
     setLoading(true);
     try {
       if (images.length === 0) {
-        throw new Error("At least one image is required.");
+        throw new Error(t("uploads.products.errImageRequired", "At least one image is required."));
       }
 
-      let finalGalleryUrl: string[] = [];
-
-      if (!supabase) throw new Error("Storage not configured");
-
+      const finalGalleryUrl: string[] = [];
       for (const img of images) {
         if (img.type === "existing") {
           finalGalleryUrl.push(img.url);
-        } else if (img.type === "new") {
-          const fileExt = img.file.name.split(".").pop();
-          const filePath = `products/${product.uploaderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage
-            .from("product-images")
-            .upload(filePath, img.file, {
-              cacheControl: "3600",
-              upsert: false,
-            });
-          if (uploadError) throw uploadError;
-          const { data: publicUrlData } = supabase.storage
-            .from("product-images")
-            .getPublicUrl(filePath);
-          const imageUrl = publicUrlData?.publicUrl;
-          if (!imageUrl) throw new Error("Could not get public URL for image");
-          finalGalleryUrl.push(imageUrl);
+        } else {
+          try {
+            const [url] = await uploadProductImages([img.file]);
+            finalGalleryUrl.push(url);
+          } catch (err) {
+            throw new Error(uploadErrorMessage(err, t, "image"));
+          }
         }
       }
 
@@ -271,21 +274,21 @@ function EditProductDialog({
       });
 
       if (updated) {
-        toast({ title: "Success", description: "Product updated." });
+        toast({ title: t("uploads.products.updatedTitle", "Saved"), description: t("uploads.products.updatedDesc", "Product updated.") });
         setOpen(false);
       } else {
         toast({
           variant: "destructive",
-          title: "Update failed",
-          description: "Could not update product.",
+          title: t("uploads.products.updateFailedTitle", "Update failed"),
+          description: t("uploads.products.updateFailedDesc", "Could not update the product."),
         });
       }
     } catch (err: any) {
       console.error("Update failed", err);
       toast({
         variant: "destructive",
-        title: "Update failed",
-        description: err?.message || "Something went wrong.",
+        title: t("uploads.products.updateFailedTitle", "Update failed"),
+        description: err?.message || t("uploads.products.genericError", "Something went wrong. Please try again."),
       });
     } finally {
       setLoading(false);
@@ -295,36 +298,36 @@ function EditProductDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Edit ${product.name}`}>
+        <Button variant="ghost" size="icon" aria-label={t("uploads.products.editAria", "Edit {name}", { name: product.name })}>
           <Edit className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit {product.name}</DialogTitle>
+          <DialogTitle>{t("uploads.products.editTitle", "Edit {name}", { name: product.name })}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor={`edit-name-${product.id}`}>Name</Label>
+            <Label htmlFor={`edit-name-${product.id}`}>{t("uploads.products.name", "Name")}</Label>
             <Input id={`edit-name-${product.id}`} {...register("name")} />
             {errors.name && (
-              <p className="text-xs text-destructive">{errors.name.message}</p>
+              <p className="text-xs text-destructive">{t(String(errors.name.message))}</p>
             )}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`edit-category-${product.id}`}>Category</Label>
+            <Label htmlFor={`edit-category-${product.id}`}>{t("uploads.products.category", "Category")}</Label>
             <Input
               id={`edit-category-${product.id}`}
               {...register("category")}
             />
             {errors.category && (
               <p className="text-xs text-destructive">
-                {errors.category.message}
+                {t(String(errors.category.message))}
               </p>
             )}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`edit-price-${product.id}`}>Price</Label>
+            <Label htmlFor={`edit-price-${product.id}`}>{t("uploads.products.price", "Price")}</Label>
             <Input
               id={`edit-price-${product.id}`}
               type="number"
@@ -332,39 +335,31 @@ function EditProductDialog({
               {...register("price")}
             />
             {errors.price && (
-              <p className="text-xs text-destructive">{errors.price.message}</p>
+              <p className="text-xs text-destructive">{t(String(errors.price.message))}</p>
             )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor={`edit-description-${product.id}`}>
-              Description
+              {t("uploads.products.description", "Description")}
             </Label>
             <Textarea
               id={`edit-description-${product.id}`}
               rows={4}
               {...register("description")}
             />
-            {errors.description && (
-              <p className="text-xs text-destructive">
-                {errors.description.message}
-              </p>
-            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor={`edit-tags-${product.id}`}>
-              Tags (comma-separated)
+              {t("uploads.products.tags", "Tags (comma-separated)")}
             </Label>
             <Input id={`edit-tags-${product.id}`} {...register("tags")} />
-            {errors.tags && (
-              <p className="text-xs text-destructive">
-                {errors.tags.message as string}
-              </p>
-            )}
           </div>
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label>Product Images ({images.length}/3)</Label>
-              {images.length < 3 && (
+              <Label>
+                {t("uploads.products.imagesCount", "Product images ({count}/{max})", { count: images.length, max: MAX_IMAGES })}
+              </Label>
+              {images.length < MAX_IMAGES && (
                 <Button
                   type="button"
                   variant="outline"
@@ -372,7 +367,7 @@ function EditProductDialog({
                   className="h-8"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="h-4 w-4 mr-2" /> Add Image
+                  <Upload className="h-4 w-4 me-2" /> {t("uploads.products.addImage", "Add image")}
                 </Button>
               )}
             </div>
@@ -382,14 +377,14 @@ function EditProductDialog({
               ref={fileInputRef}
               className="hidden"
               multiple
-              accept="image/jpeg,image/png,image/webp"
+              accept={IMAGE_ACCEPT}
               onChange={(e) => handleFileChange(e, false)}
             />
             <input
               type="file"
               ref={replaceInputRef}
               className="hidden"
-              accept="image/jpeg,image/png,image/webp"
+              accept={IMAGE_ACCEPT}
               onChange={(e) => handleFileChange(e, true)}
             />
 
@@ -401,12 +396,13 @@ function EditProductDialog({
                 >
                   <Image
                     src={img.type === "existing" ? img.url : img.previewUrl}
-                    alt={`${product.name} image ${idx + 1}`}
+                    alt={t("uploads.products.imageAlt", "{name} image {n}", { name: product.name, n: idx + 1 })}
                     fill
+                    sizes="200px"
                     className="object-cover"
                   />
 
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                     <Button
                       type="button"
                       variant="secondary"
@@ -417,7 +413,7 @@ function EditProductDialog({
                         replaceInputRef.current?.click();
                       }}
                     >
-                      <Edit className="h-3 w-3 mr-2" /> Replace
+                      <Edit className="h-3 w-3 me-2" /> {t("uploads.products.replace", "Replace")}
                     </Button>
                     <Button
                       type="button"
@@ -435,12 +431,12 @@ function EditProductDialog({
                         });
                       }}
                     >
-                      <Trash2 className="h-3 w-3 mr-2" /> Remove
+                      <Trash2 className="h-3 w-3 me-2" /> {t("uploads.products.remove", "Remove")}
                     </Button>
                   </div>
                   {idx === 0 && (
-                    <div className="absolute top-2 left-2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
-                      COVER
+                    <div className="absolute top-2 start-2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
+                      {t("uploads.products.cover", "COVER")}
                     </div>
                   )}
                 </div>
@@ -449,7 +445,7 @@ function EditProductDialog({
               {images.length === 0 && (
                 <div className="col-span-3 py-8 text-center border-2 border-dashed rounded-md bg-muted/50">
                   <p className="text-sm text-muted-foreground">
-                    No images. Please add at least one product image.
+                    {t("uploads.products.noImages", "No images. Please add at least one product image.")}
                   </p>
                 </div>
               )}
@@ -458,11 +454,11 @@ function EditProductDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="secondary">
-                Cancel
+                {t("uploads.common.cancel", "Cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : "Save Changes"}
+              {loading ? t("uploads.common.saving", "Saving...") : t("uploads.products.saveChanges", "Save changes")}
             </Button>
           </DialogFooter>
         </form>
@@ -471,29 +467,39 @@ function EditProductDialog({
   );
 }
 
-function DeleteProductAlert({
+/**
+ * "Delete" archives the product (DELETE /api/products/[id] sets archivedAt):
+ * it disappears from the shop, orders keep it, and it can be restored.
+ */
+function ArchiveProductAlert({
   productId,
   productName,
-  onDelete,
+  onArchive,
+  onArchived,
 }: {
   productId: string;
   productName: string;
-  onDelete: (id: string) => Promise<boolean>;
+  onArchive: (id: string) => Promise<boolean>;
+  onArchived?: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
 
-  const handleDelete = async () => {
-    const ok = await onDelete(productId);
+  const handleArchive = async () => {
+    const ok = await onArchive(productId).catch(() => false);
     if (ok) {
       toast({
-        title: "Product Deleted",
-        description: `${productName} has been removed.`,
+        title: t("uploads.archive.archivedTitle", "Product archived"),
+        description: t("uploads.archive.archivedDesc", "{name} was removed from the shop. You can restore it from the Archived list.", {
+          name: productName,
+        }),
       });
+      await onArchived?.();
     } else {
       toast({
         variant: "destructive",
-        title: "Delete failed",
-        description: "Could not delete product.",
+        title: t("uploads.archive.archiveFailedTitle", "Archive failed"),
+        description: t("uploads.archive.archiveFailedDesc", "Could not archive the product. Please try again."),
       });
     }
   };
@@ -504,27 +510,27 @@ function DeleteProductAlert({
         <Button
           variant="ghost"
           size="icon"
-          className="text-destructive hover:text-destructive"
-          aria-label={`Delete ${productName}`}
+          aria-label={t("uploads.archive.archiveAria", "Archive {name}", { name: productName })}
+          title={t("uploads.archive.archive", "Archive")}
         >
-          <Trash2 className="h-4 w-4" />
+          <Archive className="h-4 w-4" />
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogTitle>{t("uploads.archive.confirmTitle", "Archive this product?")}</AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the
-            product "{productName}".
+            {t(
+              "uploads.archive.confirmDesc",
+              "\"{name}\" will disappear from the shop and can no longer be ordered. Orders that already include it keep it. You can restore it at any time from the Archived list.",
+              { name: productName },
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleDelete}
-            className="bg-destructive hover:bg-destructive/90"
-          >
-            Delete
+          <AlertDialogCancel>{t("uploads.common.cancel", "Cancel")}</AlertDialogCancel>
+          <AlertDialogAction onClick={handleArchive}>
+            {t("uploads.archive.archive", "Archive")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -534,12 +540,14 @@ function DeleteProductAlert({
 
 function ProductsManager() {
   const { format: formatPrice } = useCurrency();
+  const { t, locale } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadStep, setUploadStep] = useState<{ index: number; total: number } | null>(null);
   const { user } = useSessionUser();
   const {
     data: products,
     loading: productsLoading,
+    refresh: refreshProducts,
     addProduct,
     deleteProduct,
     updateProduct,
@@ -549,6 +557,17 @@ function ProductsManager() {
       : undefined,
   );
   const { toast } = useToast();
+  const [view, setView] = useState<"active" | "archived" | "all">("active");
+
+  // Archived products stay listed for their admin / owner, below active ones.
+  const archivedCount = useMemo(() => (products || []).filter(isArchivedProduct).length, [products]);
+  const activeCount = (products?.length || 0) - archivedCount;
+  const visibleProducts = useMemo(() => {
+    const list = products || [];
+    if (view === "active") return list.filter((p) => !isArchivedProduct(p));
+    if (view === "archived") return list.filter(isArchivedProduct);
+    return activeFirst(list);
+  }, [products, view]);
 
   const {
     register,
@@ -559,50 +578,38 @@ function ProductsManager() {
     resolver: zodResolver(productSchema),
   });
 
+  const formatDate = (value: unknown) => {
+    if (!value) return t("uploads.common.na", "N/A");
+    const raw =
+      typeof value === "object" && value !== null && "toDate" in value
+        ? (value as any).toDate()
+        : new Date(value as any);
+    const date = raw instanceof Date ? raw : new Date(raw);
+    return isNaN(date.getTime())
+      ? t("uploads.common.na", "N/A")
+      : date.toLocaleDateString(locale === "ar" ? "ar-SY" : "en-US", { dateStyle: "medium" });
+  };
+
   const onSubmit = async (data: ProductFormData) => {
     if (!user) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "You must be logged in to add a product.",
-      });
-      return;
-    }
-    if (!supabase) {
-      toast({
-        variant: "destructive",
-        title: "Storage not configured",
-        description: "Supabase client is missing.",
+        title: t("uploads.common.errorTitle", "Error"),
+        description: t("uploads.products.loginToAdd", "You must be logged in to add a product."),
       });
       return;
     }
     setLoading(true);
 
     try {
-      setUploadingImage(true);
-      const files: File[] = Array.from(data.imageFiles);
-      const uploadResults: string[] = [];
-
-      for (const file of files) {
-        const fileExt = file.name.split(".").pop();
-        const filePath = `products/${user.id || user.uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from("product-images")
-          .upload(filePath, file, {
-            cacheControl: "3600",
-            upsert: false,
-          });
-        if (uploadError) {
-          throw uploadError;
-        }
-        const { data: publicUrlData } = supabase.storage
-          .from("product-images")
-          .getPublicUrl(filePath);
-        const imageUrl = publicUrlData?.publicUrl;
-        if (!imageUrl) {
-          throw new Error("Could not get public URL for image");
-        }
-        uploadResults.push(imageUrl);
+      const files: File[] = Array.from(data.imageFiles as FileList);
+      let uploadResults: string[];
+      try {
+        uploadResults = await uploadProductImages(files, (index) => setUploadStep({ index, total: files.length }));
+      } catch (err) {
+        throw new Error(uploadErrorMessage(err, t, "image"));
+      } finally {
+        setUploadStep(null);
       }
 
       const imageUrl = uploadResults[0];
@@ -627,24 +634,23 @@ function ProductsManager() {
 
       const created = await addProduct(productData as any);
       if (!created) {
-        throw new Error("Failed to add product");
+        throw new Error(t("uploads.products.addFailedDesc", "The product could not be saved. Please try again."));
       }
 
       toast({
-        title: "Product Added",
-        description: `${data.name} has been successfully added.`,
+        title: t("uploads.products.addedTitle", "Product added"),
+        description: t("uploads.products.addedDesc", "{name} has been added.", { name: data.name }),
       });
       reset();
     } catch (err) {
       const error = err as any;
-      console.error("Debug: Failed to add product:", error);
+      console.error("Failed to add product:", error);
       toast({
         variant: "destructive",
-        title: "Operation Failed",
-        description: `An error occurred: ${error.message}`,
+        title: t("uploads.products.addFailedTitle", "Could not add the product"),
+        description: error?.message || t("uploads.products.genericError", "Something went wrong. Please try again."),
       });
     } finally {
-      setUploadingImage(false);
       setLoading(false);
     }
   };
@@ -665,24 +671,24 @@ function ProductsManager() {
       <div className="grid min-w-0 gap-6 md:grid-cols-3">
         <Card className="w-full md:col-span-1 min-w-0">
           <CardHeader>
-            <CardTitle>Add New Product</CardTitle>
+            <CardTitle>{t("uploads.products.addTitle", "Add new product")}</CardTitle>
             <CardDescription>
-              Fill out the form to add a new product to your store.
+              {t("uploads.products.addDesc", "Fill out the form to add a new product to your store.")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="add-product-name">Product Name</Label>
+                <Label htmlFor="add-product-name">{t("uploads.products.productName", "Product name")}</Label>
                 <Input id="add-product-name" {...register("name")} />
                 {errors.name && (
                   <p className="text-xs text-destructive">
-                    {errors.name.message}
+                    {t(String(errors.name.message))}
                   </p>
                 )}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-description">Description</Label>
+                <Label htmlFor="add-product-description">{t("uploads.products.description", "Description")}</Label>
                 <Textarea
                   id="add-product-description"
                   {...register("description")}
@@ -690,11 +696,11 @@ function ProductsManager() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-tags">Tags (comma-separated)</Label>
+                <Label htmlFor="add-product-tags">{t("uploads.products.tags", "Tags (comma-separated)")}</Label>
                 <Input id="add-product-tags" {...register("tags")} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-price">Price</Label>
+                <Label htmlFor="add-product-price">{t("uploads.products.price", "Price")}</Label>
                 <Input
                   id="add-product-price"
                   type="number"
@@ -703,68 +709,95 @@ function ProductsManager() {
                 />
                 {errors.price && (
                   <p className="text-xs text-destructive">
-                    {errors.price.message}
+                    {t(String(errors.price.message))}
                   </p>
                 )}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="add-product-category">Category</Label>
+                <Label htmlFor="add-product-category">{t("uploads.products.category", "Category")}</Label>
                 <Input id="add-product-category" {...register("category")} />
                 {errors.category && (
                   <p className="text-xs text-destructive">
-                    {errors.category.message}
+                    {t(String(errors.category.message))}
                   </p>
                 )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="add-product-image">
-                  Product Images (up to 3, max 5MB each)
+                  {t("uploads.products.imagesLabel", "Product images (up to 3, max 5 MB each)")}
                 </Label>
                 <Input
                   id="add-product-image"
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={IMAGE_ACCEPT}
                   {...register("imageFiles")}
                 />
                 {errors.imageFiles && (
                   <p className="text-xs text-destructive">
-                    {errors.imageFiles.message as string}
+                    {t(String(errors.imageFiles.message))}
                   </p>
                 )}
               </div>
               <Button
                 type="submit"
-                disabled={loading || productsLoading || uploadingImage}
+                disabled={loading || productsLoading}
               >
-                {loading
-                  ? "Adding..."
-                  : uploadingImage
-                    ? "Uploading..."
-                    : "Add Product"}
+                {uploadStep
+                  ? t("uploads.products.uploadingStep", "Uploading image {n} of {total}...", {
+                      n: uploadStep.index + 1,
+                      total: uploadStep.total,
+                    })
+                  : loading
+                    ? t("uploads.products.adding", "Adding...")
+                    : t("uploads.products.addButton", "Add product")}
               </Button>
             </form>
           </CardContent>
         </Card>
         <Card className="w-full md:col-span-2 min-w-0">
-          <CardHeader>
-            <CardTitle>My Products</CardTitle>
+          <CardHeader className="gap-3">
+            <CardTitle>{t("uploads.products.listTitle", "My products")}</CardTitle>
             <CardDescription>
               {user?.role === "admin"
-                ? "A list of all products on the platform."
-                : "A list of products you have uploaded."}
+                ? t("uploads.products.listDescAdmin", "All products on the platform.")
+                : t("uploads.products.listDescOwner", "Products you have uploaded.")}
             </CardDescription>
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label={t("uploads.archive.filterLabel", "Show products")}
+            >
+              {(
+                [
+                  ["active", t("uploads.archive.filterActive", "Active ({count})", { count: activeCount })],
+                  ["archived", t("uploads.archive.filterArchived", "Archived ({count})", { count: archivedCount })],
+                  ["all", t("uploads.archive.filterAll", "All")],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={view === value ? "default" : "outline"}
+                  aria-pressed={view === value}
+                  onClick={() => setView(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Image</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Uploaded By</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Date Added</TableHead>
-                  <TableHead className="text-right">Manage</TableHead>
+                  <TableHead>{t("uploads.products.colImage", "Image")}</TableHead>
+                  <TableHead>{t("uploads.products.colName", "Name")}</TableHead>
+                  <TableHead>{t("uploads.products.colUploadedBy", "Uploaded by")}</TableHead>
+                  <TableHead>{t("uploads.products.colPrice", "Price")}</TableHead>
+                  <TableHead>{t("uploads.products.colDate", "Date added")}</TableHead>
+                  <TableHead className="text-end">{t("uploads.products.colManage", "Manage")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -786,69 +819,70 @@ function ProductsManager() {
                       <TableCell>
                         <Skeleton className="h-5 w-24" />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-8 w-20 ml-auto" />
+                      <TableCell className="text-end">
+                        <Skeleton className="h-8 w-20 ms-auto" />
                       </TableCell>
                     </TableRow>
                   ))
-                ) : products && products.length > 0 ? (
-                  products.map((product) => (
+                ) : visibleProducts.length > 0 ? (
+                  visibleProducts.map((product) => {
+                    const archived = isArchivedProduct(product);
+                    return (
                     <TableRow
                       key={product.id}
                       className={
-                        !isAllowedToManage(product) ? "bg-muted/30" : ""
+                        archived ? "bg-muted/40 text-muted-foreground" : !isAllowedToManage(product) ? "bg-muted/30" : ""
                       }
                     >
                       <TableCell>
                         <Image
-                          src={product.imageUrl || "https://placehold.co/40x40"}
+                          src={product.imageUrl || PRODUCT_FALLBACK_IMAGE}
                           alt={product.name}
                           width={40}
                           height={40}
-                          className="rounded object-cover"
+                          className={`rounded object-cover${archived ? " opacity-60" : ""}`}
                         />
                       </TableCell>
-                      <TableCell>{product.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{product.name}</span>
+                          {archived && <ArchivedBadge />}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {product.uploaderName}
                       </TableCell>
                       <TableCell>{formatPrice(product.price)}</TableCell>
-                      <TableCell>
-                        {(() => {
-                          if (!product.createdAt) return "N/A";
-                          const raw =
-                            typeof product.createdAt === "object" &&
-                              "toDate" in product.createdAt
-                              ? (product.createdAt as any).toDate()
-                              : new Date(product.createdAt as any);
-                          const date =
-                            raw instanceof Date ? raw : new Date(raw);
-                          return isNaN(date.getTime())
-                            ? "N/A"
-                            : format(date, "PPP");
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>{formatDate(product.createdAt)}</TableCell>
+                      <TableCell className="text-end">
                         {isAllowedToManage(product) ? (
                           <div className="flex justify-end items-center">
                             <EditProductDialog
                               product={product}
                               onUpdate={updateProduct}
                             />
-                            <DeleteProductAlert
-                              productId={product.id}
-                              productName={product.name}
-                              onDelete={deleteProduct}
-                            />
+                            {archived ? (
+                              <RestoreProductButton product={product} onRestored={refreshProducts} />
+                            ) : (
+                              <ArchiveProductAlert
+                                productId={product.id}
+                                productName={product.name}
+                                onArchive={deleteProduct}
+                                onArchived={refreshProducts}
+                              />
+                            )}
                           </div>
                         ) : null}
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center">
-                      No products found.
+                      {view === "archived"
+                        ? t("uploads.archive.emptyArchived", "No archived products.")
+                        : t("uploads.products.empty", "No products found.")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -863,16 +897,16 @@ function ProductsManager() {
 
 export default function ProductsAdminPage() {
   const { user } = useSessionUser();
+  const { t } = useTranslation();
 
   if (!user) {
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground">
-          Please{" "}
-          <Link href="/login" className="underline text-primary">
-            log in
+          <Link href="/login?next=/admin/products" className="underline decoration-primary decoration-2 underline-offset-4 text-foreground">
+            {t("uploads.products.loginLink", "Log in")}
           </Link>{" "}
-          to manage products.
+          {t("uploads.products.loginToManage", "to manage products.")}
         </p>
       </div>
     );
@@ -881,9 +915,9 @@ export default function ProductsAdminPage() {
   if (user.role !== "admin" && user.role !== "store-owner") {
     return (
       <div className="text-center py-16">
-        <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t("uploads.common.accessDenied", "Access denied")}</h1>
         <p className="text-muted-foreground mt-4">
-          You do not have permission to view this page.
+          {t("uploads.common.noPermission", "You do not have permission to view this page.")}
         </p>
       </div>
     );
