@@ -1,35 +1,70 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Check, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { useLogin } from '@/hooks/use-session';
+import { safeNextPath, useLogin, type AuthErrorCode } from '@/hooks/use-session';
+import { useTranslation } from '@/components/language-provider';
+import { AUTH_LINK_CLASS, GoogleSignInButton } from '@/components/google-sign-in-button';
+import { validatePassword } from '@/lib/password';
+import { track } from '@/lib/analytics';
+import { cn } from '@/lib/utils';
 
-export default function SignUpPage() {
+/**
+ * Password rules shown live under the field. Mirrors src/lib/password.ts
+ * (validatePassword), which the signup API enforces — keep them in sync.
+ */
+const PASSWORD_RULES: Array<{ key: string; fallback: string; test: (p: string) => boolean }> = [
+  { key: 'signup.ruleLength', fallback: 'At least 8 characters', test: (p) => p.length >= 8 && p.length <= 200 },
+  { key: 'signup.ruleLetter', fallback: 'At least one letter', test: (p) => /[A-Za-z]/.test(p) },
+  { key: 'signup.ruleNumber', fallback: 'At least one number', test: (p) => /\d/.test(p) },
+];
+
+const ERROR_MESSAGES: Record<AuthErrorCode, [string, string]> = {
+  exists: ['signup.errorExists', 'An account with this email already exists. Log in, or use "Forgot password".'],
+  weak_password: ['signup.errorWeak', 'Please choose a password that meets all the rules below.'],
+  invalid_email: ['signup.errorEmail', 'Please enter a valid email address.'],
+  invalid_phone: ['signup.errorPhone', 'Please enter a valid phone number, or leave it empty.'],
+  too_many: ['authCommon.errorTooMany', 'Too many attempts. Please wait a few minutes and try again.'],
+  invalid: ['signup.errorGeneric', "We couldn't create your account. Please try again."],
+  unknown: ['signup.errorGeneric', "We couldn't create your account. Please try again."],
+};
+
+/** Arabic-Indic / Persian digits → ASCII, so "٠٩٣…" is accepted like "093…". */
+const toAsciiDigits = (s: string) => s.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) & 0xf));
+
+function SignUpForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<[string, string] | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { signup } = useLogin();
+  const { t } = useTranslation();
+
+  const next = safeNextPath(searchParams.get('next'));
+  const nextQuery = next !== '/' ? `?next=${encodeURIComponent(next)}` : '';
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const hasMinLength = password.length >= 8;
-    const hasLetter = /[A-Za-z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    if (!hasMinLength || !hasLetter || !hasNumber) {
-      toast({
-        variant: 'destructive',
-        title: 'Weak Password',
-        description: 'Password must be at least 8 characters and include a letter and a number.',
-      });
+    setFormError(null);
+    if (validatePassword(password)) {
+      setFormError(ERROR_MESSAGES.weak_password);
+      return;
+    }
+    const phoneNumber = toAsciiDigits(phone.trim());
+    if (phoneNumber && !/^\+?[0-9\s\-()]{7,30}$/.test(phoneNumber)) {
+      setFormError(ERROR_MESSAGES.invalid_phone);
       return;
     }
     setLoading(true);
@@ -39,26 +74,25 @@ export default function SignUpPage() {
         email,
         password,
         displayName,
+        phoneNumber: phoneNumber || undefined,
       });
-      if (!result.ok) {
+      if (result.created) track('sign_up', { method: 'email' });
+      if (result.ok) {
         toast({
-          variant: 'destructive',
-          title: 'Sign Up Failed',
-          description: result.message || 'An unknown error occurred.',
+          title: t('signup.toastSuccessTitle', 'Account created!'),
+          description: t('signup.toastSuccessDesc', 'Welcome to 3D Titans.'),
         });
+        router.replace(next);
+      } else if (result.created) {
+        // Account exists now but the automatic login didn't go through.
+        toast({ title: t('signup.toastCreatedLoginTitle', 'Account created'), description: t('signup.toastCreatedLoginDesc', 'Please log in to continue.') });
+        router.replace(`/login${nextQuery}`);
       } else {
-        toast({
-          title: 'Account Created!',
-          description: 'Welcome to 3D Titans.',
-        });
-        router.push('/');
+        setFormError(ERROR_MESSAGES[result.code || 'unknown']);
       }
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Sign Up Failed',
-        description: error.message || 'An unknown error occurred.',
-      });
+    } catch (error) {
+      console.error('Signup failed', error);
+      setFormError(ERROR_MESSAGES.unknown);
     } finally {
       setLoading(false);
     }
@@ -68,18 +102,25 @@ export default function SignUpPage() {
     <div className="container mx-auto flex items-center justify-center min-h-[80vh] py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-headline">Create an Account</CardTitle>
-          <CardDescription>Join the 3D Titans community</CardDescription>
+          <CardTitle className="text-3xl font-headline">
+            <h1>{t('signup.title', 'Create an account')}</h1>
+          </CardTitle>
+          <CardDescription>{t('signup.subtitle', 'Order 3D prints and track your orders in one place.')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
+            {formError && (
+              <p role="alert" className="border-[2px] border-destructive p-3 text-sm text-destructive">
+                {t(formError[0], formError[1])}
+              </p>
+            )}
             <form onSubmit={handleSignUp} className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="display-name">Display Name</Label>
+                <Label htmlFor="display-name">{t('signup.name', 'Your name')}</Label>
                 <Input
                   id="display-name"
                   type="text"
-                  placeholder="Your Name"
+                  autoComplete="name"
                   required
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -87,11 +128,13 @@ export default function SignUpPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('authCommon.email', 'Email')}</Label>
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="you@example.com"
+                  dir="ltr"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -99,60 +142,80 @@ export default function SignUpPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="phone">
+                  {t('signup.phone', 'Phone / WhatsApp')}{' '}
+                  <span className="text-muted-foreground font-normal">{t('authCommon.optional', '(optional)')}</span>
+                </Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="09XX XXX XXX"
+                  dir="ltr"
+                  aria-describedby="phone-help"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={loading}
+                />
+                <p id="phone-help" className="text-xs text-muted-foreground">
+                  {t('signup.phoneHelp', 'We use it only to arrange delivery of your orders.')}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">{t('authCommon.password', 'Password')}</Label>
                 <Input
                   id="password"
                   type="password"
+                  autoComplete="new-password"
+                  aria-describedby="password-rules"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
                 />
+                <ul id="password-rules" className="grid gap-1 text-xs" aria-live="polite">
+                  {PASSWORD_RULES.map((rule) => {
+                    const met = rule.test(password);
+                    return (
+                      <li key={rule.key} className={cn('flex items-center gap-2', met ? 'text-foreground' : 'text-muted-foreground')}>
+                        {met ? (
+                          <Check className="h-3.5 w-3.5 text-[hsl(var(--pixel-green))]" aria-hidden="true" />
+                        ) : (
+                          <Circle className="h-3 w-3" aria-hidden="true" />
+                        )}
+                        <span>{t(rule.key, rule.fallback)}</span>
+                        <span className="sr-only">{met ? t('signup.ruleMet', '(done)') : t('signup.ruleNotMet', '(not yet)')}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
               <Button type="submit" className="w-full mt-2" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Sign Up'}
+                {loading ? t('signup.submitting', 'Creating account...') : t('signup.submit', 'Sign up')}
               </Button>
             </form>
             <div className="mt-6 text-center text-sm">
               <p className="text-muted-foreground">
-                Already have an account?{' '}
-                <Link href="/login" className="font-semibold text-primary hover:underline">
-                  Login
+                {t('signup.haveAccount', 'Already have an account?')}{' '}
+                <Link href={`/login${nextQuery}`} className={AUTH_LINK_CLASS}>
+                  {t('signup.loginLink', 'Log in')}
                 </Link>
               </p>
             </div>
           </div>
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-          <Button variant="outline" type="button" className="w-full" onClick={() => import('next-auth/react').then(mod => mod.signIn('google', { callbackUrl: '/store-dashboard' }))}>
-            <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-              <path
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                fill="#34A853"
-              />
-              <path
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                fill="#EA4335"
-              />
-            </svg>
-            Sign up with Google
-          </Button>
+          <GoogleSignInButton callbackUrl={next} label={t('signup.google', 'Sign up with Google')} />
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  // useSearchParams needs a Suspense boundary in the App Router.
+  return (
+    <Suspense fallback={<div className="min-h-[80vh]" />}>
+      <SignUpForm />
+    </Suspense>
   );
 }

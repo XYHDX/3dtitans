@@ -1,11 +1,39 @@
 import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
+import { PRIVATE_CACHE_CONTROL, PUBLIC_CACHE_CONTROL } from '@/app/products/_lib/http-cache';
+import {
+  PRODUCT_LIST_SELECT,
+  PUBLIC_LIST_ORDER,
+  mapListProduct,
+  categoryWhere,
+  normalizeCategory,
+  parseGallery,
+  textSearchWhere,
+} from '@/app/products/_lib/product-list';
 
 // API routes depend on the request (query string / session cookies) and must
-// never be pre-rendered at build time.
+// never be pre-rendered at build time. CDN caching is controlled per response
+// with Cache-Control below.
 export const dynamic = 'force-dynamic';
+
+const DEFAULT_LIMIT = 24;
+const MAX_LIMIT = 60;
+const MAX_OFFSET = 10_000;
+const FEATURED_COUNT = 6;
+/** Safety cap for dashboard lists (admin / store owner). */
+const MANAGE_MAX = 1000;
+/** Cap for the legacy (un-paginated) list used by installed mobile app builds. */
+const LEGACY_MAX = 200;
+/**
+ * Any of these marks a request from the current web client. A request with
+ * none of them (only storeSlug / storeId / uploaderId, or nothing) gets the
+ * legacy full-item list the published mobile app parses.
+ */
+const NEW_LIST_PARAMS = ['limit', 'offset', 'cursor', 'featured', 'scope', 'category', 'q'];
 
 /** Price must be a positive number with at most 2 decimals. Returns the number or null. */
 function parsePrice(raw: unknown): number | null {
@@ -14,16 +42,8 @@ function parsePrice(raw: unknown): number | null {
   return Math.round(n * 100) / 100;
 }
 
+/** Full product (dashboards / POST response) — includes description, tags, whole gallery and archive state. */
 function mapProduct(product: any) {
-  let gallery: string[] = [];
-  if (product.imageGallery) {
-    try {
-      gallery = JSON.parse(product.imageGallery) || [];
-    } catch (e) {
-      gallery = [];
-    }
-  }
-
   return {
     id: product.id,
     name: product.name,
@@ -32,7 +52,7 @@ function mapProduct(product: any) {
     description: product.description || '',
     tags: product.tags ? product.tags.split(',').filter(Boolean) : [],
     imageUrl: product.imageUrl,
-    imageGallery: gallery,
+    imageGallery: parseGallery(product.imageGallery),
     imageHint: product.imageHint || undefined,
     uploaderId: product.uploaderId,
     uploaderName: product.uploaderName || product.uploader?.name || 'Unknown',
@@ -47,121 +67,222 @@ function mapProduct(product: any) {
     has3dPreview: product.has3dPreview || false,
     createdAt: product.createdAt,
     isPrioritizedStore: !!product.uploader?.isPrioritizedStore,
+    /** Archived products are hidden from the shop but kept for order history. */
+    archived: !!product.archivedAt,
+    archivedAt: product.archivedAt || null,
   };
 }
 
-async function ensureSiteSettingTable() {
-  try {
-    await prisma.siteSetting.findFirst({ select: { key: true }, take: 1 });
-    return true;
-  } catch (error) {
-    try {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "SiteSetting" (
-          "key" TEXT PRIMARY KEY,
-          "value" TEXT NOT NULL,
-          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      return true;
-    } catch (err) {
-      console.error('Failed to ensure SiteSetting table', err);
-      return false;
-    }
-  }
+function intParam(raw: string | null, fallback: number, min: number, max: number) {
+  const n = Number.parseInt(raw || '', 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
 }
 
-async function getPrioritizedIds() {
-  const ok = await ensureSiteSettingTable();
-  if (!ok) return new Set<string>();
+/**
+ * Legacy list of prioritised uploader IDs (written by the users API when the
+ * isPrioritizedStore column was missing). Read-only here; never creates tables.
+ */
+async function getLegacyPrioritizedIds(): Promise<string[]> {
   try {
-    const prioritizedSetting = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
-    if (!prioritizedSetting?.value) return new Set<string>();
-    return new Set<string>(JSON.parse(prioritizedSetting.value));
+    const row = await prisma.siteSetting.findUnique({ where: { key: 'prioritizedStoreIds' } });
+    const ids = row?.value ? JSON.parse(row.value) : [];
+    return Array.isArray(ids) ? ids.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
   } catch (error) {
     console.error('Failed to read prioritizedStoreIds', error);
-    return new Set<string>();
+    return [];
   }
 }
 
-async function buildFilters(req: Request) {
-  const url = new URL(req.url);
+/** storeId / storeSlug / uploaderId filters shared by the public and dashboard lists. */
+async function ownershipFilters(url: URL): Promise<Prisma.ProductWhereInput | null> {
   const storeId = url.searchParams.get('storeId') || undefined;
   const storeSlug = url.searchParams.get('storeSlug') || undefined;
   const uploaderId = url.searchParams.get('uploaderId') || undefined;
 
-  const where: any = {};
-  if (storeId) where.storeId = storeId;
-  if (uploaderId) where.uploaderId = uploaderId;
-
+  const and: Prisma.ProductWhereInput[] = [];
+  if (storeId) and.push({ storeId });
+  if (uploaderId) and.push({ uploaderId });
   if (storeSlug) {
-    const store = await prisma.store.findUnique({ where: { slug: storeSlug } });
-    if (!store) {
-      return { where: { id: { in: [] } } };
-    }
-    // Include products explicitly linked to the store plus any legacy products by the same owner.
-    where.OR = [{ storeId: store.id }, { uploaderId: store.ownerId }];
+    const store = await prisma.store.findUnique({ where: { slug: storeSlug }, select: { id: true, ownerId: true } });
+    if (!store) return null; // unknown store → empty list
+    // Products explicitly linked to the store plus any legacy products by the same owner.
+    and.push({ OR: [{ storeId: store.id }, { uploaderId: store.ownerId }] });
   }
-
-  return { where };
+  return and.length ? { AND: and } : {};
 }
 
-export async function GET(req: Request) {
-  try {
-    const prioritizedIds = await getPrioritizedIds();
-    const { where } = await buildFilters(req);
+function json(body: unknown, cacheControl: string, status = 200) {
+  return NextResponse.json(body, { status, headers: { 'Cache-Control': cacheControl } });
+}
 
-    const prioritized = await prisma.product.findMany({
-      where,
-      orderBy: [
-        { uploader: { isPrioritizedStore: 'desc' } },
-        { rating: 'desc' },
-        { createdAt: 'desc' },
-      ],
+/**
+ * Dashboard variant (`?scope=manage`): admins see every product, store owners
+ * only their own — archived ones included, flagged with `archived`. Never cached.
+ */
+async function getManagedProducts(url: URL) {
+  const session = await getServerSession(authOptions);
+  const user = session?.user;
+  if (!user || (user.role !== 'admin' && user.role !== 'store-owner')) {
+    return json({ error: 'Unauthorized' }, PRIVATE_CACHE_CONTROL, 401);
+  }
+
+  let where: Prisma.ProductWhereInput;
+  if (user.role === 'admin') {
+    const filters = await ownershipFilters(url);
+    if (!filters) return json({ products: [] }, PRIVATE_CACHE_CONTROL);
+    where = filters;
+  } else {
+    // Store owners can only ever list their own products.
+    where = { uploaderId: user.id };
+  }
+
+  const products = await prisma.product.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: MANAGE_MAX,
+    include: {
+      uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
+      store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
+    },
+  });
+  return json({ products: products.map(mapProduct) }, PRIVATE_CACHE_CONTROL);
+}
+
+/** `?featured=1`: up to 6 products from prioritised stores, topped up with the newest products. */
+async function getFeaturedProducts() {
+  const legacyIds = await getLegacyPrioritizedIds();
+  const prioritizedWhere: Prisma.ProductWhereInput = {
+    archivedAt: null,
+    OR: [
+      { uploader: { isPrioritizedStore: true } },
+      ...(legacyIds.length ? [{ uploaderId: { in: legacyIds } }] : []),
+    ],
+  };
+  const prioritized = await prisma.product.findMany({
+    where: prioritizedWhere,
+    orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    take: FEATURED_COUNT,
+    select: PRODUCT_LIST_SELECT,
+  });
+
+  let rows = prioritized;
+  if (rows.length < FEATURED_COUNT) {
+    const newest = await prisma.product.findMany({
+      where: { archivedAt: null, id: { notIn: rows.map((r) => r.id) } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: FEATURED_COUNT - rows.length,
+      select: PRODUCT_LIST_SELECT,
+    });
+    rows = [...rows, ...newest];
+  }
+
+  const legacy = new Set(legacyIds);
+  return rows.map((row) => {
+    const mapped = mapListProduct(row);
+    return { ...mapped, isPrioritizedStore: mapped.isPrioritizedStore || legacy.has(row.uploaderId) };
+  });
+}
+
+/** Full product without dashboard-only fields — the item shape older clients expect. */
+function mapLegacyProduct(product: any) {
+  const { archived: _archived, archivedAt: _archivedAt, ...legacy } = mapProduct(product);
+  return legacy;
+}
+
+/**
+ * Legacy list (no paging params): `{ products }` with full items (description,
+ * tags, whole gallery…), archived products excluded, prioritised stores first,
+ * capped at 200. Kept for published mobile app builds that can't be updated.
+ */
+async function getLegacyProducts(url: URL) {
+  const filters = await ownershipFilters(url);
+  if (!filters) return json({ products: [] }, PUBLIC_CACHE_CONTROL);
+
+  const [legacyIds, products] = await Promise.all([
+    getLegacyPrioritizedIds(),
+    prisma.product.findMany({
+      where: { AND: [{ archivedAt: null }, filters] },
+      orderBy: PUBLIC_LIST_ORDER,
+      take: LEGACY_MAX,
       include: {
-        // Public list — no email field. Uploader names only.
         uploader: { select: { id: true, name: true, isPrioritizedStore: true } },
         store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
       },
-    });
-    return NextResponse.json({
-      products: prioritized.map((p) => {
-        const mapped = mapProduct(p);
-        return {
-          ...mapped,
-          isPrioritizedStore: mapped.isPrioritizedStore || prioritizedIds.has(p.uploaderId),
-        };
+    }),
+  ]);
+  const legacy = new Set(legacyIds);
+  return json(
+    {
+      products: products.map((p) => {
+        const mapped = mapLegacyProduct(p);
+        return { ...mapped, isPrioritizedStore: mapped.isPrioritizedStore || legacy.has(p.uploaderId) };
       }),
-    });
-  } catch (error) {
-    console.error('Products GET failed (priority ordering)', error);
-    // Fallback for environments without isPrioritizedStore column.
-    try {
-      const prioritizedIds = await getPrioritizedIds();
-      const { where } = await buildFilters(req);
+    },
+    PUBLIC_CACHE_CONTROL
+  );
+}
 
-      const products = await prisma.product.findMany({
-        where,
-        orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
-        include: {
-          // Public list — no email field. Uploader names only.
-          uploader: { select: { id: true, name: true } },
-          store: { select: { id: true, name: true, slug: true, avatarUrl: true } },
-        },
-      });
-      return NextResponse.json({
-        products: products.map((p) => {
-          const mapped = mapProduct(p);
-          return {
-            ...mapped,
-            isPrioritizedStore: mapped.isPrioritizedStore || prioritizedIds.has(p.uploaderId),
-          };
-        }),
-      });
-    } catch (err) {
-      console.error('Products GET fallback failed', err);
-      return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
+/**
+ * GET /api/products
+ *
+ * Public (cached on the CDN, archived products excluded):
+ *   ?limit=24 (max 60) &offset=0 (alias: cursor) → { products, nextOffset }
+ *   ?category=  ?q=  ?storeSlug=  ?storeId=  ?uploaderId=   filters
+ *   ?featured=1 → 6 products for the home page
+ * Dashboards:
+ *   ?scope=manage[&uploaderId=|storeId=|storeSlug=] → every product the caller
+ *   may manage, archived ones flagged (admin / store owner only, never cached).
+ * Legacy (none of limit/offset/cursor/featured/scope/category/q — published
+ * mobile app): { products } with full items, max 200. The web always sends `limit`.
+ */
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  try {
+    if (!NEW_LIST_PARAMS.some((k) => url.searchParams.has(k))) {
+      return await getLegacyProducts(url);
     }
+
+    if (url.searchParams.get('scope') === 'manage') {
+      return await getManagedProducts(url);
+    }
+
+    if (url.searchParams.get('featured') === '1') {
+      const products = await getFeaturedProducts();
+      return json({ products, nextOffset: null }, PUBLIC_CACHE_CONTROL);
+    }
+
+    const limit = intParam(url.searchParams.get('limit'), DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const offset = intParam(url.searchParams.get('offset') ?? url.searchParams.get('cursor'), 0, 0, MAX_OFFSET);
+
+    const filters = await ownershipFilters(url);
+    if (!filters) return json({ products: [], nextOffset: null }, PUBLIC_CACHE_CONTROL);
+
+    const and: Prisma.ProductWhereInput[] = [{ archivedAt: null }, filters];
+    const category = normalizeCategory(url.searchParams.get('category'));
+    if (category) and.push(categoryWhere(category));
+    const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
+    if (q) and.push(textSearchWhere(q));
+
+    // One extra row tells us whether there is another page.
+    const rows = await prisma.product.findMany({
+      where: { AND: and },
+      orderBy: PUBLIC_LIST_ORDER,
+      skip: offset,
+      take: limit + 1,
+      select: PRODUCT_LIST_SELECT,
+    });
+    const hasMore = rows.length > limit;
+    return json(
+      {
+        products: rows.slice(0, limit).map(mapListProduct),
+        nextOffset: hasMore ? offset + limit : null,
+      },
+      PUBLIC_CACHE_CONTROL
+    );
+  } catch (error) {
+    console.error('Products GET failed', error);
+    return json({ error: 'Failed to load products' }, PRIVATE_CACHE_CONTROL, 500);
   }
 }
 
@@ -217,6 +338,8 @@ export async function POST(req: Request) {
       },
     });
 
+    // Server-rendered store pages cache for 60 s — list the new product right away.
+    revalidateTag('products');
     return NextResponse.json({ product: mapProduct({ ...product, uploaderEmail: user.email || '' }) });
   } catch (error) {
     console.error('Products POST failed', error);

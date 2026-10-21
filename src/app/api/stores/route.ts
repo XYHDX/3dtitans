@@ -2,10 +2,12 @@ import { authOptions } from '@/lib/auth/options';
 import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { Prisma } from '@prisma/client';
+import { PRIVATE_CACHE_CONTROL, PUBLIC_CACHE_CONTROL } from '@/app/products/_lib/http-cache';
 
 // API routes depend on the request (query string / session cookies) and must
-// never be pre-rendered at build time.
+// never be pre-rendered at build time. CDN caching is set per response below.
 export const dynamic = 'force-dynamic';
 
 function slugify(input: string) {
@@ -34,13 +36,38 @@ function mapStore(store: any, extraProductsCount?: number) {
   };
 }
 
+/** The public directory is small; the cap only guards against runaway responses. */
+const MAX_STORES = 200;
+
+/**
+ * GET /api/stores
+ *
+ * Public: published stores only, cached on the CDN.
+ * `?published=false` (include drafts) is honoured only for admins (any store)
+ * and store owners (their own store) — everyone else gets the published list.
+ * Responses to that variant depend on the session, so they are never cached.
+ */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const publishedParam = searchParams.get('published');
-    const ownerId = searchParams.get('ownerId');
+    const wantsDrafts = searchParams.get('published') === 'false';
+    let ownerId = searchParams.get('ownerId');
+    let includeDrafts = false;
 
-    const where: any = {};
+    if (wantsDrafts) {
+      const session = await getServerSession(authOptions);
+      const user = session?.user;
+      if (user?.role === 'admin') {
+        includeDrafts = true;
+      } else if (user?.role === 'store-owner' && user.id) {
+        // Owners may only see their own draft store.
+        includeDrafts = true;
+        ownerId = user.id;
+      }
+    }
+    const cacheControl = wantsDrafts ? PRIVATE_CACHE_CONTROL : PUBLIC_CACHE_CONTROL;
+
+    const where: Prisma.StoreWhereInput = {};
     if (ownerId) {
       where.ownerId = ownerId;
     } else {
@@ -48,50 +75,59 @@ export async function GET(req: Request) {
       where.ownerId = { gt: '' };
       where.slug = { gt: '' };
     }
-    if (publishedParam !== 'false') where.isPublished = true;
+    if (!includeDrafts) where.isPublished = true;
 
     const stores = await prisma.store.findMany({
       where,
       orderBy: [{ isPublished: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
-      include: { _count: { select: { products: true } } },
+      take: MAX_STORES,
     });
 
     const storeIds = stores.map((s) => s.id);
     const ownerIds = stores.map((s) => s.ownerId);
 
-    const storeCounts = await prisma.product.groupBy({
-      by: ['storeId'],
-      where: { storeId: { in: storeIds } },
-      _count: true,
-    });
-    const ownerCounts = await prisma.product.groupBy({
-      by: ['uploaderId'],
-      where: { uploaderId: { in: ownerIds } },
-      _count: true,
-    });
-    const intersectionCounts = await prisma.product.groupBy({
-      by: ['storeId', 'uploaderId'],
-      where: { storeId: { in: storeIds }, uploaderId: { in: ownerIds } },
-      _count: true,
-    });
+    // A store's products = linked to the store OR legacy products by its owner
+    // (counted once). Archived products are hidden from the shop, so not counted.
+    const [storeCounts, ownerCounts, intersectionCounts] = await Promise.all([
+      prisma.product.groupBy({
+        by: ['storeId'],
+        where: { archivedAt: null, storeId: { in: storeIds } },
+        _count: true,
+      }),
+      prisma.product.groupBy({
+        by: ['uploaderId'],
+        where: { archivedAt: null, uploaderId: { in: ownerIds } },
+        _count: true,
+      }),
+      prisma.product.groupBy({
+        by: ['storeId', 'uploaderId'],
+        where: { archivedAt: null, storeId: { in: storeIds }, uploaderId: { in: ownerIds } },
+        _count: true,
+      }),
+    ]);
 
     const storeCountMap = new Map(storeCounts.map((c: any) => [c.storeId, c._count]));
     const ownerCountMap = new Map(ownerCounts.map((c: any) => [c.uploaderId, c._count]));
     const intersectionMap = new Map(intersectionCounts.map((c: any) => [`${c.storeId}:${c.uploaderId}`, c._count]));
 
-    return NextResponse.json({
-      stores: stores.map((store) => {
-        const sCount = storeCountMap.get(store.id) || 0;
-        const oCount = ownerCountMap.get(store.ownerId) || 0;
-        const iCount = intersectionMap.get(`${store.id}:${store.ownerId}`) || 0;
-        const combinedCount = sCount + oCount - iCount;
-        return mapStore(store, combinedCount);
-      }),
-    });
+    return NextResponse.json(
+      {
+        stores: stores.map((store) => {
+          const sCount = storeCountMap.get(store.id) || 0;
+          const oCount = ownerCountMap.get(store.ownerId) || 0;
+          const iCount = intersectionMap.get(`${store.id}:${store.ownerId}`) || 0;
+          const combinedCount = sCount + oCount - iCount;
+          return mapStore(store, combinedCount);
+        }),
+      },
+      { headers: { 'Cache-Control': cacheControl } }
+    );
   } catch (error) {
     console.error('Stores GET failed', error);
-    const message = (error as any)?.message || 'Failed to load stores';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to load stores' },
+      { status: 500, headers: { 'Cache-Control': PRIVATE_CACHE_CONTROL } }
+    );
   }
 }
 
@@ -154,6 +190,8 @@ export async function POST(req: Request) {
         include: { _count: { select: { products: true } } },
       });
 
+    // Server-rendered store pages cache for 60 s — show the change right away.
+    revalidateTag('stores');
     return NextResponse.json({ store: mapStore(store) });
   } catch (error) {
     console.error('Stores POST failed', error);

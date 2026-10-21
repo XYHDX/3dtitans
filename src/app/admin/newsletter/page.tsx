@@ -6,6 +6,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { useSessionUser } from '@/hooks/use-session';
 import { useNewsletterSubscriptions } from '@/hooks/use-data';
+import { useTranslation } from '@/components/language-provider';
+
+/** Same cap as GET /api/newsletter. */
+const MAX_LISTED = 5000;
 
 type NewsletterSubscription = {
     id: string;
@@ -18,6 +22,7 @@ type NewsletterSubscription = {
 export default function NewsletterAdminPage() {
     const { user } = useSessionUser();
     const { data: subscriptions, loading: subscriptionsLoading } = useNewsletterSubscriptions();
+    const { t } = useTranslation();
 
     if (!user) {
         return (
@@ -84,6 +89,11 @@ export default function NewsletterAdminPage() {
                         )}
                     </TableBody>
                 </Table>
+                {subscriptions && subscriptions.length >= MAX_LISTED && (
+                    <p className="text-xs text-muted-foreground pt-4">
+                        {t('backend.newsletter.truncated', 'Showing the newest {count} subscribers.', { count: MAX_LISTED })}
+                    </p>
+                )}
             </CardContent>
         </Card>
     )

@@ -57,7 +57,8 @@ export async function GET() {
       return NextResponse.json({ items: [] });
     }
     const rows = await prisma.cartItem.findMany({
-      where: { userId: session.user.id },
+      // Archived (removed) products never show up in a cart.
+      where: { userId: session.user.id, product: { archivedAt: null } },
       orderBy: { addedAt: 'desc' },
       include: {
         product: {
@@ -95,9 +96,12 @@ export async function POST(req: Request) {
     const quantity = Math.max(1, Math.min(99, Number.isFinite(rawQty) ? Math.floor(rawQty) : 1));
     const mode = body?.mode === 'set' ? 'set' : 'add';
 
-    // Verify product exists (avoid FK errors → 500)
-    const exists = await prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
+    // Verify product exists and is still sold (avoid FK errors → 500)
+    const exists = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, archivedAt: true } });
     if (!exists) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    if (exists.archivedAt) {
+      return NextResponse.json({ error: 'This product is no longer available.', code: 'product_unavailable' }, { status: 410 });
+    }
 
     if (mode === 'set') {
       await prisma.cartItem.upsert({

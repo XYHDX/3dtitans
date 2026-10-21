@@ -8,17 +8,20 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  role          String    @default("user")
-  isPrioritizedStore Boolean @default(false)
-  phoneNumber   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  name               String?
+  email              String?   @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?
+  role               String    @default("user")
+  isPrioritizedStore Boolean   @default(false)
+  phoneNumber        String?
+  /// Bumped on role change, password reset or deletion; sessions carrying an
+  /// older version are rejected (see lib/auth/options.ts jwt callback).
+  tokenVersion       Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   products         Product[]
   uploads          Upload[]
@@ -36,7 +39,7 @@ model User {
 }
 
 model Product {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   name         String
   category     String
   price        Decimal
@@ -46,21 +49,29 @@ model Product {
   imageHint    String?
   uploaderName String?
   imageGallery String?
-  rating       Float    @default(0)
-  reviewCount  Int      @default(0)
-  has3dPreview Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  rating       Float     @default(0)
+  reviewCount  Int       @default(0)
+  has3dPreview Boolean   @default(false)
+  /// Set instead of deleting, so orders keep their history. Archived products
+  /// are hidden from the shop, search, cart and new orders.
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  uploader   User   @relation(fields: [uploaderId], references: [id])
+  uploader   User    @relation(fields: [uploaderId], references: [id])
   uploaderId String
-  store      Store? @relation(fields: [storeId], references: [id])
+  store      Store?  @relation(fields: [storeId], references: [id])
   storeId    String?
 
   orderItems   OrderItem[]
   reviews      Review[]
   wishlistedBy WishlistItem[]
   cartItems    CartItem[]
+
+  @@index([uploaderId])
+  @@index([storeId])
+  @@index([createdAt])
+  @@index([archivedAt])
 }
 
 /// User-submitted review of a Product. One per (user, product) pair.
@@ -99,8 +110,8 @@ model WishlistItem {
 /// Server-side cart, one row per (user, product) pair.
 /// Guest users keep using localStorage; this kicks in on login.
 model CartItem {
-  quantity Int      @default(1)
-  addedAt  DateTime @default(now())
+  quantity  Int      @default(1)
+  addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -114,18 +125,18 @@ model CartItem {
 
 /// Saved shipping address — checkout pre-fills from the default.
 model Address {
-  id          String   @id @default(cuid())
-  label       String?  // 'Home', 'Office', etc.
-  name        String   // Recipient's full name
-  line1       String
-  line2       String?
-  city        String
-  postalCode  String
-  country     String
-  phone       String?
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  label      String? // 'Home', 'Office', etc.
+  name       String // Recipient's full name
+  line1      String
+  line2      String?
+  city       String
+  postalCode String? // optional: most Syrian addresses have no postal code
+  country    String
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
@@ -150,11 +161,15 @@ model Upload {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  user            User    @relation(fields: [userId], references: [id])
-  userId          String
-  assignedOwner   User?   @relation("UploadAssignedOwner", fields: [assignedOwnerId], references: [id])
-  assignedOwnerId String?
+  user               User    @relation(fields: [userId], references: [id])
+  userId             String
+  assignedOwner      User?   @relation("UploadAssignedOwner", fields: [assignedOwnerId], references: [id])
+  assignedOwnerId    String?
   assignedOwnerEmail String?
+
+  @@index([userId])
+  @@index([assignedOwnerId])
+  @@index([createdAt])
 }
 
 model Order {
@@ -164,7 +179,7 @@ model Order {
   shippingName       String
   shippingAddress1   String
   shippingCity       String
-  shippingPostalCode String
+  shippingPostalCode String? // optional: most Syrian addresses have no postal code
   shippingCountry    String
   phoneNumber        String
   customerEmail      String?
@@ -175,16 +190,16 @@ model Order {
   updatedAt          DateTime  @updatedAt
 
   // Payment fields (Phase 4)
-  paymentMethod      String?   // 'cod' | 'bank_transfer' | 'sham_cash' | 'syriatel_cash' | 'stripe'
-  paymentStatus      String    @default("pending")  // 'pending' | 'verifying' | 'paid' | 'failed' | 'refunded'
-  paymentReference   String?   // user-entered ref (transfer ID, wallet txn ID, Stripe session ID)
-  paymentProofUrl    String?   // uploaded screenshot for wallet payments
-  paidAt             DateTime?
+  paymentMethod    String? // 'cod' | 'bank_transfer' | 'sham_cash' | 'sham_cash_epay' | 'syriatel_cash' | 'stripe'
+  paymentStatus    String    @default("pending") // 'pending' | 'verifying' | 'paid' | 'failed' | 'refunded'
+  paymentReference String? // user-entered ref (transfer ID, wallet txn ID, Stripe session ID)
+  paymentProofUrl  String? // uploaded screenshot for wallet payments
+  paidAt           DateTime?
 
   // Idempotency — prevents duplicate orders from double-clicks / network retries.
   // Client fetches a fresh key on /checkout mount, sends with POST. Server returns
   // existing order if the key was already used instead of creating a new one.
-  idempotencyKey     String?   @unique
+  idempotencyKey String? @unique
 
   user   User?   @relation("UserOrders", fields: [userId], references: [id])
   userId String?
@@ -192,6 +207,20 @@ model Order {
   items               OrderItem[]
   assignments         OrderAssignment[]
   paymentTransactions PaymentTransaction[]
+  paymentAttempts     PaymentAttempt[]
+
+  // Currency the order was priced in (e.g. 'USD'), fixed at creation so a later
+  // change of the store currency never relabels past orders. NULL on legacy rows.
+  currency    String?
+  // Campaign attribution captured from the 3dt_utm cookie at checkout.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([paymentMethod, paymentStatus, createdAt])
+  @@index([customerEmail])
 }
 
 /// An external payment (e.g. an incoming Sham Cash transfer) that was used to
@@ -199,8 +228,8 @@ model Order {
 /// can never be counted towards two orders.
 model PaymentTransaction {
   id         String    @id @default(cuid())
-  provider   String    // 'sham_cash' | 'stripe' | ...
-  externalId String    // provider's transaction id
+  provider   String // 'sham_cash' | 'sham_cash_epay' | 'sham_cash_epay_refund' | 'stripe' | ...
+  externalId String // provider's transaction id
   amount     Decimal
   currency   String
   senderName String?
@@ -215,6 +244,33 @@ model PaymentTransaction {
   @@index([orderId])
 }
 
+/// One ShamCash e-pay bill created for an order (Phase 9). An order can have
+/// several attempts (expired / failed ones are retried with a new billNo:
+/// "3DT-AB12CD34-1", "-2", …). The row is written BEFORE createBill is called so
+/// a crash can never lose a billNo. Status changes only through
+/// applyBillStatus() (src/lib/payments/shamcash-epay-service.ts).
+model PaymentAttempt {
+  id            String    @id @default(cuid())
+  provider      String    @default("sham_cash_epay")
+  billNo        String    @unique
+  amount        Decimal   @db.Decimal(18, 2)
+  currency      String // 'USD' | 'SYP'
+  status        String    @default("pending") // 'pending' | 'paid' | 'expired' | 'failed' | 'refunded' | 'partly_refunded'
+  paymentUrl    String?
+  tranId        String? // ShamCash payment transaction id (set when paid)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  expiresAt     DateTime
+  paidAt        DateTime?
+  lastCheckedAt DateTime? // last getBillInfo fallback call (rate-limits the fallback)
+
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderId String
+
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
 model OrderItem {
   id       String  @id @default(cuid())
   name     String
@@ -227,6 +283,9 @@ model OrderItem {
 
   product   Product? @relation(fields: [productId], references: [id])
   productId String?
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 model OrderAssignment {
@@ -238,11 +297,12 @@ model OrderAssignment {
   order   Order  @relation(fields: [orderId], references: [id])
   orderId String
 
-  owner   User   @relation("AssignmentOwner", fields: [ownerId], references: [id])
-  ownerId String
+  owner      User    @relation("AssignmentOwner", fields: [ownerId], references: [id])
+  ownerId    String
   ownerEmail String?
 
   @@unique([orderId, ownerId])
+  @@index([ownerId])
 }
 
 model SiteSetting {
@@ -283,6 +343,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -292,6 +353,8 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -303,20 +366,20 @@ model VerificationToken {
 }
 
 model Store {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  slug        String   @unique
+  slug        String    @unique
   bio         String?
   avatarUrl   String?
   coverUrl    String?
   websiteUrl  String?
-  isPublished Boolean  @default(false)
-  sortOrder   Int      @default(0)    // Admin-controlled manual sort (lower = higher up)
-  owner       User     @relation(fields: [ownerId], references: [id])
+  isPublished Boolean   @default(false)
+  sortOrder   Int       @default(0) // Admin-controlled manual sort (lower = higher up)
+  owner       User      @relation(fields: [ownerId], references: [id])
   ownerId     String
   products    Product[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([sortOrder, updatedAt])
 }

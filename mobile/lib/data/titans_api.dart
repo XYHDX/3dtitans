@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 import '../core/config.dart';
 import '../core/format.dart';
@@ -400,72 +399,92 @@ class TitansApi {
     return PrintUpload.fromJson(u.cast<String, dynamic>());
   }
 
-  /// Uploads raw bytes through the website (`POST /api/storage/upload`).
-  /// [kind] is `model` (STL) or `proof` (payment screenshot).
+  /// Uploads a file straight to Supabase Storage in two steps:
+  ///
+  /// 1. `POST /api/storage/upload-url` — the website checks the session, the
+  ///    file type and size, and returns a one-time signed upload URL.
+  /// 2. `PUT <signedUrl>` with the raw bytes — the file goes directly to
+  ///    Storage, so it is not limited by Vercel's 4.5 MB request-body limit.
+  ///
+  /// The returned [StoredFile.url] is what `/api/uploads` (downloadURL) and
+  /// `/api/payments/proof` (proofUrl) expect. [kind] is `model` (STL/3MF/OBJ,
+  /// up to 100 MB) or `proof` (payment screenshot/PDF, up to 10 MB).
   Future<StoredFile> uploadFile({
     required String kind,
     required Uint8List bytes,
     required String fileName,
     String? contentType,
   }) async {
-    // Fail fast (before sending megabytes) when the website has not deployed
-    // the upload route yet: a GET on an existing route answers 405, a missing
-    // route answers with the 404 page.
-    final probe = await _send('GET', '/storage/upload');
-    if (probe.statusCode == 404) {
-      throw const ApiException(
-        'The website does not have the upload endpoint yet (deploy /api/storage/upload).',
-        statusCode: 404,
-      );
+    // Step 1: ask the website for a signed upload URL.
+    final Map<String, dynamic> ticket;
+    try {
+      ticket = await _requestJson('POST', '/storage/upload-url', jsonBody: {
+        'kind': kind,
+        'fileName': fileName,
+        'size': bytes.length,
+        'contentType': ?contentType,
+      });
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        throw const ApiException(
+          'The website does not have the upload endpoint yet (deploy /api/storage/upload-url).',
+          statusCode: 404,
+        );
+      }
+      rethrow;
     }
+    final signedUrl = ticket['signedUrl']?.toString() ?? '';
+    final url = ticket['url']?.toString() ?? '';
+    final path = ticket['path']?.toString() ?? '';
+    if (signedUrl.isEmpty || url.isEmpty || path.isEmpty) {
+      throw const ApiException('Unexpected response');
+    }
+    // The server picks the content type from the file extension; Storage
+    // checks it against the bucket's allowed types.
+    final type = ticket['contentType']?.toString() ?? contentType ?? 'application/octet-stream';
 
-    final uri = Uri.parse('$_api/storage/upload');
-    final req = http.MultipartRequest('POST', uri)
+    // Step 2: send the bytes to Storage. No cookies or API key: the token in
+    // the signed URL authorises exactly this one object.
+    final req = http.Request('PUT', Uri.parse(signedUrl))
       ..followRedirects = false
-      ..headers['Accept'] = 'application/json'
-      ..fields['kind'] = kind
-      ..files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: fileName,
-        contentType: contentType == null ? null : MediaType.parse(contentType),
-      ));
-    final cookieHeader = cookies.header;
-    if (cookieHeader != null) req.headers['Cookie'] = cookieHeader;
+      ..headers['Content-Type'] = type
+      ..bodyBytes = bytes;
 
     http.Response res;
     try {
-      final streamed = await _client.send(req).timeout(const Duration(minutes: 3));
+      final streamed = await _client.send(req).timeout(const Duration(minutes: 10));
       res = await http.Response.fromStream(streamed);
     } on TimeoutException {
       throw const ApiException('The upload timed out', isNetwork: true);
     } on SocketException catch (e) {
       throw ApiException('Network error: ${e.message}', isNetwork: true);
+    } on HandshakeException catch (e) {
+      throw ApiException('TLS error: ${e.message}', isNetwork: true);
     } on http.ClientException catch (e) {
       throw ApiException(e.message, isNetwork: true);
     }
-    final setCookie = res.headers['set-cookie'];
-    if (setCookie != null && setCookie.isNotEmpty) {
-      cookies.ingest(setCookie);
-      onCookiesChanged?.call(cookies);
-    }
-    final text = utf8.decode(res.bodyBytes, allowMalformed: true);
-    Object? decoded;
-    try {
-      decoded = jsonDecode(text);
-    } catch (_) {}
-    if (res.statusCode == 404) {
-      throw const ApiException(
-        'The website does not have the upload endpoint yet (deploy /api/storage/upload).',
-        statusCode: 404,
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      Object? decoded;
+      try {
+        decoded = jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
+      } catch (_) {}
+      final detail = decoded is Map ? (decoded['message'] ?? decoded['error'])?.toString() : null;
+      final storageStatus = decoded is Map ? int.tryParse('${decoded['statusCode']}') : null;
+      if (res.statusCode == 413 || storageStatus == 413) {
+        throw ApiException('The file is too large.', statusCode: res.statusCode);
+      }
+      throw ApiException(
+        detail == null || detail.isEmpty ? 'Upload failed (${res.statusCode})' : 'Upload failed: $detail',
+        statusCode: res.statusCode,
       );
     }
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      final msg = decoded is Map && decoded['error'] != null ? decoded['error'].toString() : null;
-      throw ApiException(msg ?? 'Upload failed (${res.statusCode})', statusCode: res.statusCode);
-    }
-    if (decoded is! Map) throw const ApiException('Unexpected response');
-    return StoredFile.fromJson(decoded.cast<String, dynamic>());
+
+    return StoredFile(
+      url: url,
+      path: path,
+      bucket: ticket['bucket']?.toString() ?? '',
+      size: bytes.length,
+    );
   }
 
   // ---------------------------------------------------------------- contact

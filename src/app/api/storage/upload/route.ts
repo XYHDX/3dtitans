@@ -1,6 +1,13 @@
 import { authOptions } from '@/lib/auth/options';
 import { rateLimit } from '@/lib/rate-limit';
 import { getStorageAdminClient } from '@/lib/supabase/server-storage';
+import {
+  UPLOAD_KINDS,
+  allowedExtension,
+  contentTypeForExtension,
+  sanitizeFileName,
+} from '@/lib/supabase/upload-kinds';
+import { randomBytes } from 'crypto';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 
@@ -8,45 +15,22 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * POST /api/storage/upload  (multipart/form-data)
+ * LEGACY  POST /api/storage/upload  (multipart/form-data)
  *
  *   fields: kind = "model" | "proof", file = <binary>
  *   -> { url, path, bucket, size, contentType }
  *
- * Server-side upload to Supabase Storage using the service-role client, so
- * clients (website + mobile app) never need the Supabase anon key and the
- * bucket policies can stay locked down. The returned `url` is exactly what
- * `/api/uploads` (downloadURL) and `/api/payments/proof` (proofUrl) accept.
+ * Kept only for older mobile app builds. New clients use
+ * POST /api/storage/upload-url and upload straight to Storage, because Vercel
+ * rejects request bodies over 4.5 MB before this code even runs — so this
+ * route only accepts files up to 4 MB.
  *
- * Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY on the server, and
- * NEXT_PUBLIC_SUPABASE_URL (same project host) for the URL allowlists.
+ * Buckets are configured once in scripts/phase13_storage_lockdown.sql (this
+ * route no longer creates or re-configures them).
  */
-const KINDS = {
-  model: {
-    bucket: 'model-uploads',
-    maxBytes: 25 * 1024 * 1024,
-    extensions: ['.stl'],
-    defaultContentType: 'model/stl',
-    // Public read so the stored links open for admins and store owners.
-    public: true,
-  },
-  proof: {
-    bucket: 'payment-proofs',
-    maxBytes: 10 * 1024 * 1024,
-    extensions: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.pdf'],
-    defaultContentType: 'application/octet-stream',
-    // PRIVATE: payment screenshots contain personal/financial data. Admins view
-    // them through /api/payments/proof/view, which issues short-lived signed links.
-    public: false,
-  },
-} as const;
-
-type Kind = keyof typeof KINDS;
-
-function sanitizeFileName(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  return (cleaned || 'file').slice(-100);
-}
+const LEGACY_MAX_BYTES = 4 * 1024 * 1024;
+const LEGACY_KINDS = ['model', 'proof'] as const;
+type LegacyKind = (typeof LEGACY_KINDS)[number];
 
 export async function POST(req: Request) {
   const limited = rateLimit(req, 'storage-upload', { windowMs: 10 * 60 * 1000, max: 30 });
@@ -60,10 +44,8 @@ export async function POST(req: Request) {
 
   const supabaseAdmin = getStorageAdminClient();
   if (!supabaseAdmin) {
-    return NextResponse.json(
-      { error: 'File storage is not configured on the server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).' },
-      { status: 503 }
-    );
+    console.error('storage/upload: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing');
+    return NextResponse.json({ error: 'File uploads are temporarily unavailable.' }, { status: 503 });
   }
 
   let form: FormData;
@@ -73,9 +55,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Expected multipart/form-data' }, { status: 400 });
   }
 
-  const kind = String(form.get('kind') || '') as Kind;
-  const spec = KINDS[kind];
-  if (!spec) return NextResponse.json({ error: "kind must be 'model' or 'proof'" }, { status: 400 });
+  const kind = String(form.get('kind') || '') as LegacyKind;
+  if (!LEGACY_KINDS.includes(kind)) {
+    return NextResponse.json({ error: "kind must be 'model' or 'proof'" }, { status: 400 });
+  }
+  const spec = UPLOAD_KINDS[kind];
 
   const entry = form.get('file') as any;
   if (!entry || typeof entry === 'string' || typeof entry.arrayBuffer !== 'function') {
@@ -83,54 +67,29 @@ export async function POST(req: Request) {
   }
   const originalName: string = String(entry.name || 'file');
   const size: number = Number(entry.size || 0);
-  const lowerName = originalName.toLowerCase();
 
-  if (!spec.extensions.some((ext) => lowerName.endsWith(ext))) {
+  const ext = allowedExtension(kind, originalName);
+  if (!ext) {
     return NextResponse.json(
       { error: `Only ${spec.extensions.join(', ')} files are accepted` },
       { status: 400 }
     );
   }
-  if (!Number.isFinite(size) || size <= 0 || size > spec.maxBytes) {
+  if (!Number.isFinite(size) || size <= 0 || size > LEGACY_MAX_BYTES) {
     return NextResponse.json(
-      { error: `File must be between 1 byte and ${Math.round(spec.maxBytes / 1024 / 1024)} MB` },
-      { status: 400 }
+      { error: 'This file is too large for this version of the app. Please update the app or upload it on the website.' },
+      { status: 413 }
     );
   }
 
-  const path = `${user.id}/${Date.now()}-${sanitizeFileName(originalName)}`;
+  const base = sanitizeFileName(originalName.slice(0, originalName.length - ext.length)).slice(0, 80);
+  const path = `${user.id}/${Date.now()}-${randomBytes(6).toString('hex')}-${base}${ext}`;
   // Derive the content type from the (already validated) extension instead of
-  // trusting the browser, so nobody can store e.g. HTML disguised as an image.
-  const EXT_TYPES: Record<string, string> = {
-    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
-    '.heic': 'image/heic', '.heif': 'image/heif', '.gif': 'image/gif', '.pdf': 'application/pdf',
-    '.stl': 'model/stl',
-  };
-  const ext = spec.extensions.find((e) => lowerName.endsWith(e)) || '';
-  const contentType: string = EXT_TYPES[ext] || spec.defaultContentType;
+  // trusting the client, so nobody can store e.g. HTML disguised as an image.
+  const contentType = contentTypeForExtension(ext);
   const bytes = Buffer.from(await entry.arrayBuffer());
 
   try {
-    // Make sure the bucket exists with the right visibility.
-    const { data: bucket } = await supabaseAdmin.storage.getBucket(spec.bucket);
-    if (bucket && bucket.public !== spec.public) {
-      const { error: updErr } = await supabaseAdmin.storage.updateBucket(spec.bucket, {
-        public: spec.public,
-        fileSizeLimit: spec.maxBytes,
-      });
-      if (updErr) console.error('storage/upload updateBucket', updErr);
-    }
-    if (!bucket) {
-      const { error: createErr } = await supabaseAdmin.storage.createBucket(spec.bucket, {
-        public: spec.public,
-        fileSizeLimit: spec.maxBytes,
-      });
-      if (createErr && !/already exists/i.test(createErr.message)) {
-        console.error('storage/upload createBucket', createErr);
-        return NextResponse.json({ error: 'Could not prepare the storage bucket' }, { status: 500 });
-      }
-    }
-
     const { error: upErr } = await supabaseAdmin.storage
       .from(spec.bucket)
       .upload(path, bytes, { contentType, upsert: false });

@@ -1,0 +1,20 @@
+# The Flutter app is built and shipped separately; never upload it to Vercel.
+mobile/
+
+# Local build output and caches
+.next/
+*.tsbuildinfo
+coverage/
+.genkit/
+
+# Secrets: Vercel reads env vars from the project settings, not from files.
+.env
+.env.*
+
+# Not needed at build or runtime
+scripts/
+audit/
+docs/
+.DS_Store
+*.pem
+npm-debug.log*

@@ -11,7 +11,7 @@ function mapAddress(a: any) {
     line1: a.line1,
     line2: a.line2 || '',
     city: a.city,
-    postalCode: a.postalCode,
+    postalCode: a.postalCode || '',
     country: a.country,
     phone: a.phone || '',
     isDefault: !!a.isDefault,
@@ -20,24 +20,28 @@ function mapAddress(a: any) {
   };
 }
 
-function validateAddress(body: any): { ok: true; data: any } | { ok: false; error: string } {
-  const required = ['name', 'line1', 'city', 'postalCode', 'country'];
+/** Most Syrian addresses have no postal code, so it's optional; country defaults to Syria. */
+const DEFAULT_COUNTRY = 'Syria';
+const optional = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+
+function validateAddress(body: any): { ok: true; data: any } | { ok: false; error: string; field: string } {
+  const required = ['name', 'line1', 'city'];
   for (const k of required) {
     if (!body[k] || typeof body[k] !== 'string' || !body[k].trim()) {
-      return { ok: false, error: `${k} is required` };
+      return { ok: false, error: `${k} is required`, field: k };
     }
   }
   return {
     ok: true,
     data: {
-      label: typeof body.label === 'string' ? body.label.trim().slice(0, 40) : null,
+      label: optional(body.label, 40),
       name: body.name.trim().slice(0, 120),
       line1: body.line1.trim().slice(0, 200),
-      line2: typeof body.line2 === 'string' ? body.line2.trim().slice(0, 200) : null,
+      line2: optional(body.line2, 200),
       city: body.city.trim().slice(0, 80),
-      postalCode: body.postalCode.trim().slice(0, 20),
-      country: body.country.trim().slice(0, 80),
-      phone: typeof body.phone === 'string' ? body.phone.trim().slice(0, 30) : null,
+      postalCode: optional(body.postalCode, 20),
+      country: optional(body.country, 80) || DEFAULT_COUNTRY,
+      phone: optional(body.phone, 30),
       isDefault: !!body.isDefault,
     },
   };
@@ -70,7 +74,7 @@ export async function POST(req: Request) {
     }
     const body = await req.json().catch(() => ({}));
     const v = validateAddress(body);
-    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    if (!v.ok) return NextResponse.json({ error: v.error, field: v.field }, { status: 400 });
 
     // If this is the user's first address, force it to be the default.
     const count = await prisma.address.count({ where: { userId: session.user.id } });
@@ -91,7 +95,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ address: mapAddress(created) });
   } catch (err: any) {
+    // Log the real error; never send database details to the browser.
     console.error('addresses POST', err);
-    return NextResponse.json({ error: err?.message || 'Failed to save' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
   }
 }

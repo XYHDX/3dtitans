@@ -17,14 +17,22 @@ function loadCurrency(): Promise<string> {
   if (cached) return Promise.resolve(cached);
   if (!inflight) {
     inflight = fetch('/api/payments/settings', { cache: 'no-store' })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        cached = String(d?.settings?.['payment.currencyLabel'] || 'SYP').toUpperCase();
+        // The server always reports the configured currency (default USD). Never
+        // guess one here: without it prices show without a label, and the next
+        // component that mounts asks again.
+        const label = String(d?.settings?.['payment.currencyLabel'] || '').trim().toUpperCase();
+        if (!label) {
+          inflight = null;
+          return '';
+        }
+        cached = label;
         return cached;
       })
       .catch(() => {
         inflight = null;
-        return 'SYP';
+        return '';
       });
   }
   return inflight;

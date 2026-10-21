@@ -13,7 +13,7 @@ function mapAddress(a: any) {
     line1: a.line1,
     line2: a.line2 || '',
     city: a.city,
-    postalCode: a.postalCode,
+    postalCode: a.postalCode || '',
     country: a.country,
     phone: a.phone || '',
     isDefault: !!a.isDefault,
@@ -40,14 +40,24 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const body = await req.json().catch(() => ({}));
     const data: any = {};
-    const strFields: Array<[string, number]> = [
-      ['label', 40], ['name', 120], ['line1', 200], ['line2', 200],
-      ['city', 80], ['postalCode', 20], ['country', 80], ['phone', 30],
-    ];
-    for (const [k, max] of strFields) {
+    // Required columns can be changed but never blanked; optional ones (postal
+    // code — rare in Syria — label, line 2, phone) are stored as NULL when empty.
+    const required: Array<[string, number]> = [['name', 120], ['line1', 200], ['city', 80]];
+    const optional: Array<[string, number]> = [['label', 40], ['line2', 200], ['postalCode', 20], ['phone', 30]];
+    for (const [k, max] of required) {
+      if (typeof body[k] === 'string') {
+        const v = body[k].trim().slice(0, max);
+        if (!v) return NextResponse.json({ error: `${k} is required`, field: k }, { status: 400 });
+        data[k] = v;
+      }
+    }
+    for (const [k, max] of optional) {
       if (typeof body[k] === 'string') {
         data[k] = body[k].trim().slice(0, max) || null;
       }
+    }
+    if (typeof body.country === 'string') {
+      data.country = body.country.trim().slice(0, 80) || 'Syria';
     }
     if (typeof body.isDefault === 'boolean') data.isDefault = body.isDefault;
 
@@ -66,8 +76,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     return NextResponse.json({ address: mapAddress(updated) });
   } catch (err: any) {
+    // Log the real error; never send database details to the browser.
     console.error('addresses PATCH', err);
-    return NextResponse.json({ error: err?.message || 'Failed to update' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
 }
 

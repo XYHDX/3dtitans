@@ -37,11 +37,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { useUsers } from '@/hooks/use-session';
+import { useSessionUser, useUsers } from '@/hooks/use-session';
+import { useTranslation } from '@/components/language-provider';
 
 
 
@@ -55,19 +56,54 @@ type PropUser = {
   photoURL?: string | null;
 };
 
-function DeleteUserAlert({ userId, userName }: { userId: string, userName: string }) {
+type Role = 'user' | 'store-owner' | 'admin';
+
+/**
+ * PATCH /api/users/[id]. Returns the server's error message on failure (e.g.
+ * "last admin", "can't change your own role"). Rows call this directly instead
+ * of each mounting useUsers(), which re-fetched the whole user list per row.
+ */
+async function patchUser(id: string, body: Record<string, unknown>): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, message: data?.error };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function DeleteUserAlert({
+  userId,
+  userName,
+  isSelf,
+  onDelete,
+}: {
+  userId: string;
+  userName: string;
+  isSelf: boolean;
+  onDelete: (id: string) => Promise<{ ok: boolean; message?: string }>;
+}) {
   const { toast } = useToast();
-  const { deleteUser } = useUsers();
+  const { t } = useTranslation();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const result = await deleteUser(userId);
-      if (!result.ok) throw new Error(result.message || 'Delete failed');
-      toast({ title: 'User Deleted', description: `${userName} has been permanently removed.` });
+      const result = await onDelete(userId);
+      if (!result.ok) throw new Error(result.message || t('backend.users.deleteFailedBody', 'Unable to delete user.'));
+      toast({
+        title: t('backend.users.deleted', 'User deleted'),
+        description: t('backend.users.deletedBody', '{name} has been permanently removed. Their orders were kept without their email.', { name: userName }),
+      });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Delete Failed', description: error?.message || 'Unable to delete user.' });
+      toast({ variant: 'destructive', title: t('backend.users.deleteFailed', 'Delete failed'), description: error?.message });
     } finally {
       setIsDeleting(false);
     }
@@ -76,21 +112,28 @@ function DeleteUserAlert({ userId, userName }: { userId: string, userName: strin
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isDeleting} aria-label="Delete user">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-destructive hover:text-destructive"
+          disabled={isDeleting || isSelf}
+          aria-label={t('backend.users.deleteUser', 'Delete user')}
+          title={isSelf ? t('backend.users.cannotDeleteSelf', "You can't delete your own account.") : undefined}
+        >
           <Trash2 className="h-4 w-4" />
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogTitle>{t('backend.users.confirmTitle', 'Are you absolutely sure?')}</AlertDialogTitle>
           <AlertDialogDescription>
-            This action is irreversible. This will permanently delete the user account for "{userName}", including their authentication record and all associated data.
+            {t('backend.users.confirmBody', 'This action is irreversible. It permanently deletes the account of "{name}", their products, stores and uploads, and signs them out everywhere. Their orders are kept for accounting, without their email.', { name: userName })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('backend.common.cancel', 'Cancel')}</AlertDialogCancel>
           <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90" disabled={isDeleting}>
-            {isDeleting ? 'Deleting...' : 'Delete User Permanently'}
+            {isDeleting ? t('backend.users.deleting', 'Deleting…') : t('backend.users.deleteConfirm', 'Delete user permanently')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -100,23 +143,25 @@ function DeleteUserAlert({ userId, userName }: { userId: string, userName: strin
 
 function VerificationSwitch({ user }: { user: PropUser }) {
   const { toast } = useToast();
-  const { updateUserVerification } = useUsers();
+  const { t } = useTranslation();
   // Optimistic UI state
   const [isVerified, setIsVerified] = useState(user.emailVerified || false);
 
   const handleVerificationChange = async (verified: boolean) => {
     setIsVerified(verified); // Optimistically update the UI
-    const ok = await updateUserVerification(user.id, verified);
-    if (ok) {
+    const result = await patchUser(user.id, { emailVerified: verified });
+    if (result.ok) {
       toast({
-        title: 'User Updated',
-        description: `${user.displayName} has been ${verified ? 'verified' : 'unverified'}.`,
+        title: t('backend.users.updated', 'User updated'),
+        description: verified
+          ? t('backend.users.verifiedBody', '{name} is now verified.', { name: user.displayName })
+          : t('backend.users.unverifiedBody', '{name} is no longer verified.', { name: user.displayName }),
       });
     } else {
       toast({
         variant: 'destructive',
-        title: 'Update failed',
-        description: 'Could not update verification.',
+        title: t('backend.users.updateFailed', 'Update failed'),
+        description: result.message || t('backend.users.verifyFailed', 'Could not update verification.'),
       });
       setIsVerified(!verified);
     }
@@ -126,29 +171,32 @@ function VerificationSwitch({ user }: { user: PropUser }) {
     <Switch
       checked={isVerified}
       onCheckedChange={handleVerificationChange}
+      aria-label={t('backend.users.verifiedLabel', 'Email verified for {name}', { name: user.displayName })}
     />
   );
 }
 
 function PrioritySwitch({ user }: { user: PropUser }) {
   const { toast } = useToast();
-  const { updateUserPriority } = useUsers();
+  const { t } = useTranslation();
   const [isPrioritized, setIsPrioritized] = useState(!!user.isPrioritizedStore);
 
   const handleChange = async (value: boolean) => {
     setIsPrioritized(value);
-    const result = await updateUserPriority(user.id, value);
+    const result = await patchUser(user.id, { isPrioritizedStore: value });
     if (result.ok) {
       toast({
-        title: 'Priority updated',
-        description: `${user.displayName} is now ${value ? 'prioritized' : 'not prioritized'} on the home page.`,
+        title: t('backend.users.priorityUpdated', 'Priority updated'),
+        description: value
+          ? t('backend.users.prioritizedBody', '{name} is now prioritized on the home page.', { name: user.displayName })
+          : t('backend.users.unprioritizedBody', '{name} is no longer prioritized on the home page.', { name: user.displayName }),
       });
     } else {
       setIsPrioritized(!value);
       toast({
         variant: 'destructive',
-        title: 'Update failed',
-        description: result.message || 'Could not update store priority.',
+        title: t('backend.users.updateFailed', 'Update failed'),
+        description: result.message || t('backend.users.priorityFailed', 'Could not update store priority.'),
       });
     }
   };
@@ -158,50 +206,64 @@ function PrioritySwitch({ user }: { user: PropUser }) {
       checked={isPrioritized}
       onCheckedChange={handleChange}
       disabled={user.role !== 'store-owner'}
+      aria-label={t('backend.users.priorityLabel', 'Prioritized store: {name}', { name: user.displayName })}
     />
   );
 }
 
 
-function RoleSelector({ user }: { user: PropUser }) {
+function RoleSelector({ user, isSelf }: { user: PropUser; isSelf: boolean }) {
   const { toast } = useToast();
-  const { updateUserRole } = useUsers();
+  const { t } = useTranslation();
+  const [role, setRole] = useState<Role>((user.role as Role) || 'user');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setRole((user.role as Role) || 'user'), [user.role]);
 
-  const handleRoleChange = async (newRole: 'user' | 'store-owner' | 'admin') => {
-    const ok = await updateUserRole(user.id, newRole);
-    if (ok) {
+  const roleLabel = (r: Role) =>
+    r === 'admin' ? t('backend.users.roleAdmin', 'Admin') : r === 'store-owner' ? t('backend.users.roleOwner', 'Store owner') : t('backend.users.roleUser', 'User');
+
+  const handleRoleChange = async (newRole: Role) => {
+    const previous = role;
+    setRole(newRole);
+    setBusy(true);
+    const result = await patchUser(user.id, { role: newRole });
+    setBusy(false);
+    if (result.ok) {
       toast({
-        title: 'Role Updated',
-        description: `${user.displayName}'s role has been changed to ${newRole}.`,
+        title: t('backend.users.roleUpdated', 'Role updated'),
+        description: t('backend.users.roleUpdatedBody', "{name}'s role is now {role}. Their current sessions were signed out.", {
+          name: user.displayName,
+          role: roleLabel(newRole),
+        }),
       });
     } else {
+      setRole(previous);
       toast({
         variant: 'destructive',
-        title: 'Update failed',
-        description: 'Could not update role.',
+        title: t('backend.users.updateFailed', 'Update failed'),
+        description: result.message || t('backend.users.roleFailed', 'Could not update role.'),
       });
     }
   };
 
   return (
-    <Select
-      defaultValue={user.role || 'user'}
-      onValueChange={(value: 'user' | 'store-owner' | 'admin') => handleRoleChange(value)}
-    >
-      <SelectTrigger className="w-[140px]">
-        <SelectValue placeholder="Select role" />
+    <Select value={role} disabled={busy || isSelf} onValueChange={(value: Role) => handleRoleChange(value)}>
+      <SelectTrigger className="w-[140px]" aria-label={t('backend.users.roleFor', 'Role for {name}', { name: user.displayName })}>
+        <SelectValue placeholder={t('backend.users.selectRole', 'Select role')} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="user">User</SelectItem>
-        <SelectItem value="store-owner">Store Owner</SelectItem>
-        <SelectItem value="admin">Admin</SelectItem>
+        <SelectItem value="user">{roleLabel('user')}</SelectItem>
+        <SelectItem value="store-owner">{roleLabel('store-owner')}</SelectItem>
+        <SelectItem value="admin">{roleLabel('admin')}</SelectItem>
       </SelectContent>
     </Select>
   );
 }
 
 export default function UsersAdminPage() {
-  const { data: users, loading: usersLoading } = useUsers();
+  const { data: users, loading: usersLoading, deleteUser } = useUsers();
+  const { user: me } = useSessionUser();
+  const { t } = useTranslation();
 
   const getInitials = (email: string | undefined) => {
     if (!email) return 'U';
@@ -211,20 +273,20 @@ export default function UsersAdminPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>User Management</CardTitle>
+        <CardTitle>{t('backend.users.title', 'User management')}</CardTitle>
         <CardDescription>
-          View and manage user roles and verification status across the platform.
+          {t('backend.users.description', 'View and manage user roles and verification status. You cannot change your own role or delete your own account, and the last admin cannot be removed.')}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Verified</TableHead>
-              <TableHead>Prioritized Store</TableHead>
-              <TableHead className="text-right">Manage</TableHead>
+              <TableHead>{t('backend.users.colUser', 'User')}</TableHead>
+              <TableHead>{t('backend.users.colRole', 'Role')}</TableHead>
+              <TableHead>{t('backend.users.colVerified', 'Verified')}</TableHead>
+              <TableHead>{t('backend.users.colPrioritized', 'Prioritized store')}</TableHead>
+              <TableHead className="text-end">{t('backend.users.colManage', 'Manage')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,56 +297,66 @@ export default function UsersAdminPage() {
                   <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                  <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                  <TableCell className="text-end"><Skeleton className="h-8 w-20 ms-auto" /></TableCell>
                 </TableRow>
               ))
             ) : users && users.length > 0 ? (
-              users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={user.photoURL || undefined} />
-                        <AvatarFallback>
-                          {getInitials(user.email)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{user.displayName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {user.email}
-                        </p>
+              users.map((user) => {
+                const isSelf = !!me?.id && me.id === user.id;
+                return (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarImage src={user.photoURL || undefined} />
+                          <AvatarFallback>
+                            {getInitials(user.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{user.displayName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {user.email}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={user.role === 'admin' ? 'destructive' : user.role === 'store-owner' ? 'default' : 'secondary'}>
-                      {user.role || 'user'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <VerificationSwitch user={user} />
-                  </TableCell>
-                  <TableCell>
-                    <PrioritySwitch user={user} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className='flex items-center justify-end'>
-                      <RoleSelector user={user} />
-                      <DeleteUserAlert userId={user.id} userName={user.displayName} />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={user.role === 'admin' ? 'destructive' : user.role === 'store-owner' ? 'default' : 'secondary'}>
+                        {user.role === 'admin'
+                          ? t('backend.users.roleAdmin', 'Admin')
+                          : user.role === 'store-owner'
+                            ? t('backend.users.roleOwner', 'Store owner')
+                            : t('backend.users.roleUser', 'User')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <VerificationSwitch user={user} />
+                    </TableCell>
+                    <TableCell>
+                      <PrioritySwitch user={user} />
+                    </TableCell>
+                    <TableCell className="text-end">
+                      <div className='flex items-center justify-end'>
+                        <RoleSelector user={user} isSelf={isSelf} />
+                        <DeleteUserAlert userId={user.id} userName={user.displayName} isSelf={isSelf} onDelete={deleteUser} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={5} className="text-center h-24">
-                  No users found.
+                  {t('backend.users.none', 'No users found.')}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+        {users && users.length >= 1000 && (
+          <p className="text-xs text-muted-foreground pt-4">{t('backend.users.truncated', 'Showing the newest 1000 users.')}</p>
+        )}
       </CardContent>
     </Card>
   );

@@ -18,6 +18,24 @@ export type Address = {
   updatedAt: string;
 };
 
+/**
+ * Thrown by create/update. `field` names the invalid field when the server
+ * rejected the input (400), so the page can show a translated message instead
+ * of raw server text.
+ */
+export class AddressSaveError extends Error {
+  constructor(public status: number, public field?: string) {
+    super(field ? `${field} is invalid` : `Address request failed (${status})`);
+    this.name = 'AddressSaveError';
+  }
+}
+
+async function toSaveError(res: Response): Promise<AddressSaveError> {
+  const body = await res.json().catch(() => ({}));
+  if (body?.error) console.warn('Address save failed:', res.status, body.error);
+  return new AddressSaveError(res.status, typeof body?.field === 'string' ? body.field : undefined);
+}
+
 export function useAddresses() {
   const { user } = useSessionUser();
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -51,10 +69,7 @@ export function useAddresses() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to save');
-    }
+    if (!res.ok) throw await toSaveError(res);
     const data = await res.json();
     await refresh();
     return data.address as Address;
@@ -66,13 +81,13 @@ export function useAddresses() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update');
+    if (!res.ok) throw await toSaveError(res);
     await refresh();
   }, [refresh]);
 
   const remove = useCallback(async (id: string) => {
     const res = await fetch(`/api/addresses/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete');
+    if (!res.ok) throw new AddressSaveError(res.status);
     await refresh();
   }, [refresh]);
 

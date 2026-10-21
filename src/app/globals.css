@@ -39,7 +39,9 @@
     /* Lines */
     --border: 240 7% 7%;             /* Titan Black borders */
     --input: 240 7% 7%;
-    --ring: 45 100% 51%;             /* Yellow focus ring */
+    /* Focus ring: Titan Black on light surfaces (yellow is ~1.6:1 on white
+       and disappears); the dark theme below keeps Arcade Yellow. */
+    --ring: 240 7% 7%;
 
     /* Brand palette extras */
     --titan-black: 240 7% 7%;
@@ -102,7 +104,18 @@
     letter-spacing: -0.02em;
     line-height: 1.25;
   }
-  img { image-rendering: pixelated; }
+  /* Hard pixel scaling only for brand art (logo, pixel illustrations).
+     Product photos must stay smooth (M-18). */
+  .pixel-art img, img.pixel-art, svg.pixel-art { image-rendering: pixelated; }
+
+  /* Keyboard focus that shows on every surface: dark outline + yellow halo
+     (visible on white, on yellow and on the always-dark footer). Components
+     with their own focus-visible:ring-* utilities keep those. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--foreground));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--accent));
+  }
 }
 
 /* =====================================================
@@ -179,4 +192,79 @@
 @keyframes pixel-reveal {
   from { max-width: 0; }
   to   { max-width: 100%; }
+}
+
+/* =====================================================
+   Arabic (H-11) — Press Start 2P and Space Mono have no Arabic glyphs.
+   Arabic pages use Noto Kufi Arabic for headlines and IBM Plex Sans Arabic
+   for body text. The Arabic font comes first: the brand fonts' metric
+   fallbacks (Arial) would otherwise render Arabic on Windows. Uppercase and
+   letter-spacing are switched off because they break joined Arabic letters.
+   ===================================================== */
+html:lang(ar) body,
+[lang="ar"]:not(html) {
+  font-family: var(--font-plex-arabic), var(--font-space-mono), system-ui, sans-serif;
+}
+html:lang(ar) :is(h1, h2, h3, h4, h5, h6, .font-headline, .sticker) {
+  font-family: var(--font-kufi), var(--font-press-start), system-ui, sans-serif;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.6;
+}
+/* Kufi at 10px is hard to read: bump the tiny pixel-font labels a little. */
+html:lang(ar) :is(.sticker, .font-headline.text-\[10px\]) {
+  font-size: 0.75rem;
+}
+html:lang(ar) :is(.font-body) {
+  font-family: var(--font-plex-arabic), var(--font-space-mono), system-ui, sans-serif;
+}
+/* Also covers Arabic snippets on English pages (e.g. the language toggle). */
+:is([class*="tracking-"], .uppercase):lang(ar) {
+  letter-spacing: 0;
+}
+/* Latin snippets explicitly tagged lang="en" inside Arabic pages keep the brand fonts. */
+html:lang(ar) [lang="en"] :is(h1, h2, h3, h4, h5, h6, .font-headline),
+html:lang(ar) :is(h1, h2, h3, h4, h5, h6, .font-headline)[lang="en"] {
+  font-family: var(--font-press-start), 'Press Start 2P', monospace;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
+/* =====================================================
+   Floating WhatsApp button — bottom-end corner, clear of the iPhone home
+   indicator and side notches (env() is 0 where there are no insets).
+   ===================================================== */
+.whatsapp-fab {
+  position: fixed;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1rem + env(safe-area-inset-right, 0px));
+}
+[dir="rtl"] .whatsapp-fab {
+  right: auto;
+  left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+/* Hero print-head sweep (pixel steps, no easing). */
+@keyframes pixel-sweep {
+  0%, 100% { transform: translateX(-8px); }
+  50%      { transform: translateX(8px); }
+}
+.anim-print-head {
+  animation: pixel-sweep 2400ms steps(8, end) infinite;
+}
+
+/* =====================================================
+   Reduced motion (M-23): stop looping animations and hover jumps.
+   ===================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .anim-pulse-cube, .anim-print-head, .animate-pixel-pulse {
+    animation: none !important;
+  }
 }
